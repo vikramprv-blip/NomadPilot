@@ -1,6 +1,8 @@
 'use client';
 import { useState, useCallback } from 'react';
 import { useAppState } from '@/hooks/useAppState';
+import { useAuth } from '@/hooks/useAuth';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import TabNav from '@/components/tabs/TabNav';
 import StageProgress from '@/components/layout/StageProgress';
 import InputStage from '@/components/trip/InputStage';
@@ -12,50 +14,74 @@ import { OpsStage, OrganizerStage, PostTripStage } from '@/components/trip/LateS
 import MyTripsTab from '@/components/mytrips/MyTripsTab';
 import DestinationTab from '@/components/destination/DestinationTab';
 import AccountTab from '@/components/account/AccountTab';
+import AuthModal from '@/components/auth/AuthModal';
 
-type Tab = 'search'|'mytrips'|'destination'|'account';
+type Tab = 'search' | 'mytrips' | 'destination' | 'account';
 
 export default function HomePage() {
   const { state, loading, error, processInput, confirmItinerary, bookTrip, setStage, reset } = useAppState();
-  const [tab, setTab]             = useState<Tab>('search');
-  const [nationality, setNationality] = useState('');
-  const [showVisa, setShowVisa]   = useState(false);
-  const [tripCount, setTripCount] = useState(0);
+  const { user, loading: authLoading, signOut } = useAuth();
+  const { permission, supported, requestPermission, notify } = usePushNotifications(user?.id);
 
-  // Save booking to localStorage + increment counter
+  const [tab, setTab]               = useState<Tab>('search');
+  const [nationality, setNationality] = useState('');
+  const [showVisa, setShowVisa]     = useState(false);
+  const [showAuth, setShowAuth]     = useState(false);
+  const [tripCount, setTripCount]   = useState(0);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [notifBanner, setNotifBanner]   = useState(true);
+
+  // Save booking to localStorage + notify user
   const handleSaveBooking = useCallback((type: string, partner: string, url: string, details: object) => {
     const stored = localStorage.getItem('nomadpilot_trips');
-    const trips = stored ? JSON.parse(stored) : [];
+    const trips  = stored ? JSON.parse(stored) : [];
     const newTrip = {
       id: Math.random().toString(36).slice(2),
       type, partner_name: partner, partner_url: url,
       details, status: 'booked',
       created_at: new Date().toISOString(),
+      user_id: user?.id,
     };
     const updated = [newTrip, ...trips];
     localStorage.setItem('nomadpilot_trips', JSON.stringify(updated));
     setTripCount(updated.length);
 
-    // Flash My Trips tab
+    // Push notification
+    notify(`${type === 'flight' ? '✈ Flight' : type === 'hotel' ? '🏨 Hotel' : type === 'car' ? '🚗 Car' : '🚂 Train'} saved to My Trips`, `Booked via ${partner}`, '/');
+
+    // Flash badge
     const el = document.getElementById('mytrips-badge');
-    if (el) { el.style.transform = 'scale(1.4)'; setTimeout(() => { el.style.transform = 'scale(1)'; }, 300); }
-  }, []);
+    if (el) { el.style.transform = 'scale(1.5)'; setTimeout(() => { el.style.transform = 'scale(1)'; }, 350); }
+  }, [user, notify]);
 
   const handleSearchSubmit = (data: object) => {
     const d = data as any;
     if (d.nationality) setNationality(d.nationality);
-    const leg = d.legs?.[0] || {};
-    const text = `I want to travel from ${leg.from||leg.from||'origin'} to ${leg.to||'destination'} on ${leg.date||leg.departure||'soon'}, ${d.travelers||1} traveler(s), ${d.cabinClass||'economy'} class. Services: ${(d.services||[]).join(', ')}.${d.nationality?` Nationality: ${d.nationality}.`:''}`;
+    const leg  = d.legs?.[0] || {};
+    const text = `I want to travel from ${leg.from || 'origin'} to ${leg.to || 'destination'} on ${leg.date || leg.departure || 'soon'}, ${d.travelers || 1} traveler(s), ${d.cabinClass || 'economy'} class. Services: ${(d.services || []).join(', ')}.${d.nationality ? ` Nationality: ${d.nationality}.` : ''}`;
     processInput(text);
   };
 
-  const inSearch = tab === 'search';
+  const inSearch    = tab === 'search';
   const showProgress = inSearch && state.stage !== 'input';
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--navy)', display: 'flex', flexDirection: 'column' }}>
-      {/* BG */}
       <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 80% 45% at 50% -5%, rgba(232,160,32,0.07), transparent)' }} />
+
+      {/* Auth modal */}
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} onSuccess={() => setShowAuth(false)} />}
+
+      {/* Push notification banner */}
+      {supported && permission === 'default' && notifBanner && (
+        <div style={{ background: 'rgba(232,160,32,0.1)', borderBottom: '1px solid rgba(232,160,32,0.2)', padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
+          <span style={{ color: 'var(--text-dim)' }}>🔔 Enable push notifications for flight delays & safety alerts</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={requestPermission} className="btn btn-gold" style={{ fontSize: 12, padding: '5px 14px' }}>Enable</button>
+            <button onClick={() => setNotifBanner(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16 }}>✕</button>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <header style={{ borderBottom: '1px solid var(--navy-border)', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(10,22,40,0.92)', backdropFilter: 'blur(16px)', position: 'sticky', top: 0, zIndex: 100, height: 58, flexShrink: 0 }}>
@@ -70,12 +96,40 @@ export default function HomePage() {
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
           {inSearch && state.stage === 'input' && (
-            <button onClick={() => setShowVisa(v => !v)} className="btn btn-navy" style={{ fontSize: 12, padding: '6px 12px' }}>
-              🛂 Visa
-            </button>
+            <button onClick={() => setShowVisa(v => !v)} className="btn btn-navy" style={{ fontSize: 12, padding: '6px 12px' }}>🛂</button>
           )}
           {inSearch && state.stage !== 'input' && (
-            <button className="btn btn-navy" onClick={() => { reset(); }} style={{ fontSize: 12, padding: '6px 12px' }}>← New Search</button>
+            <button className="btn btn-navy" onClick={reset} style={{ fontSize: 12, padding: '6px 12px' }}>← New</button>
+          )}
+
+          {/* Auth button / user menu */}
+          {!authLoading && (
+            user ? (
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setShowUserMenu(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--navy-light)', border: '1px solid var(--navy-border)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', color: 'var(--text)', fontFamily: 'DM Sans', fontSize: 13, fontWeight: 500 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold-dark), var(--gold))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--navy)', fontWeight: 800 }}>
+                    {(user.user_metadata?.full_name || user.email || 'U')[0].toUpperCase()}
+                  </div>
+                  <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {user.user_metadata?.full_name || user.email?.split('@')[0]}
+                  </span>
+                </button>
+                {showUserMenu && (
+                  <div style={{ position: 'absolute', right: 0, top: '110%', background: 'var(--navy-mid)', border: '1px solid var(--navy-border)', borderRadius: 10, padding: 8, minWidth: 180, zIndex: 200, boxShadow: 'var(--shadow)' }}>
+                    <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--navy-border)', marginBottom: 6 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Signed in as</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{user.email}</div>
+                    </div>
+                    <a href="/admin" style={{ textDecoration: 'none', display: 'block' }}>
+                      <button style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', color: 'var(--gold)', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans', borderRadius: 6 }}>⚙ Admin Dashboard</button>
+                    </a>
+                    <button onClick={() => { signOut(); setShowUserMenu(false); }} style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', color: 'var(--red)', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans', borderRadius: 6 }}>↩ Sign Out</button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button onClick={() => setShowAuth(true)} className="btn btn-gold" style={{ fontSize: 12, padding: '6px 16px' }}>Sign In</button>
+            )
           )}
         </div>
       </header>
@@ -85,15 +139,15 @@ export default function HomePage() {
 
       {/* Error */}
       {error && tab === 'search' && (
-        <div style={{ background: 'rgba(232,85,85,0.1)', border: '1px solid rgba(232,85,85,0.3)', borderRadius: 0, padding: '10px 24px', color: 'var(--red)', fontSize: 13 }}>
-          ⚠ {error}
-        </div>
+        <div style={{ background: 'rgba(232,85,85,0.1)', padding: '10px 24px', color: 'var(--red)', fontSize: 13 }}>⚠ {error}</div>
       )}
 
-      {/* Main content */}
+      {/* Click outside to close user menu */}
+      {showUserMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 150 }} onClick={() => setShowUserMenu(false)} />}
+
+      {/* Main */}
       <main style={{ position: 'relative', zIndex: 1, flex: 1, padding: '40px 24px', maxWidth: 1100, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
 
-        {/* ─ Search Tab ─ */}
         {tab === 'search' && (
           <>
             {state.stage === 'input' && (
@@ -106,45 +160,28 @@ export default function HomePage() {
                 )}
               </>
             )}
-
-            {(state.stage === 'processing' || state.stage === 'generation' || state.stage === 'optimization') && (
-              <ProcessingStage currentStage={state.stage} />
-            )}
-
+            {(state.stage === 'processing' || state.stage === 'generation' || state.stage === 'optimization') && <ProcessingStage currentStage={state.stage} />}
             {state.stage === 'confirmation' && state.itineraries && state.intent && (
-              <ConfirmationStage
-                itineraries={state.itineraries}
-                intent={state.intent}
-                onSaveBooking={handleSaveBooking}
-              />
+              <ConfirmationStage itineraries={state.itineraries} intent={state.intent} onSaveBooking={handleSaveBooking} />
             )}
-
             {state.stage === 'booking' && state.selectedItinerary && (
               <BookingStage itinerary={state.selectedItinerary} onBook={bookTrip} loading={loading} />
             )}
-
             {state.stage === 'ops' && state.booking && state.selectedItinerary && (
               <OpsStage booking={state.booking} itinerary={state.selectedItinerary} tripId={state.tripId} onContinue={() => setStage('organizer')} />
             )}
-
             {state.stage === 'organizer' && state.selectedItinerary && state.booking && (
               <OrganizerStage itinerary={state.selectedItinerary} booking={state.booking} onContinue={() => setStage('post_trip')} />
             )}
-
             {state.stage === 'post_trip' && state.selectedItinerary && (
-              <PostTripStage itinerary={state.selectedItinerary} onReset={() => { reset(); }} />
+              <PostTripStage itinerary={state.selectedItinerary} onReset={reset} />
             )}
           </>
         )}
 
-        {/* ─ My Trips Tab ─ */}
-        {tab === 'mytrips' && <MyTripsTab />}
-
-        {/* ─ Destination Tab ─ */}
+        {tab === 'mytrips'     && <MyTripsTab userId={user?.id} />}
         {tab === 'destination' && <DestinationTab />}
-
-        {/* ─ Account Tab ─ */}
-        {tab === 'account' && <AccountTab currentPlan="free" />}
+        {tab === 'account'     && <AccountTab currentPlan={user?.user_metadata?.plan || 'free'} />}
       </main>
     </div>
   );
