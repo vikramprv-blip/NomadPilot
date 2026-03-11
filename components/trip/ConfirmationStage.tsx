@@ -1,198 +1,238 @@
 'use client';
-
 import { useState } from 'react';
 import { Itinerary, TripIntent } from '@/types';
 
+// ─── Deep-link builders ───────────────────────────────────────────────────────
+function flightLinks(intent: TripIntent) {
+  const o = intent.origin || '', d = intent.destination || '';
+  const dep = intent.departureDate || '', ret = intent.returnDate || '';
+  const pax = intent.travelers || 1;
+  const cls = intent.preferences?.cabinClass || 'economy';
+  return [
+    { name: 'Skyscanner',    color: '#00A698', icon: '✈', url: `https://www.skyscanner.com/transport/flights/${o}/${d}/${dep}/${ret}/?adults=${pax}&cabinclass=${cls}` },
+    { name: 'Expedia',       color: '#FFC72C', icon: '✈', url: `https://www.expedia.com/Flights-Search?leg1=from:${o},to:${d},departure:${dep}&passengers=adults:${pax}` },
+    { name: 'MakeMyTrip',    color: '#E8175D', icon: '✈', url: `https://www.makemytrip.com/flights/international-flights/${o.toLowerCase()}-${d.toLowerCase()}.html` },
+    { name: 'Google Flights', color: '#4285F4', icon: '✈', url: `https://www.google.com/travel/flights?q=flights+from+${o}+to+${d}` },
+  ];
+}
+function hotelLinks(intent: TripIntent) {
+  const d = encodeURIComponent(intent.destination || '');
+  const ci = intent.departureDate || '', co = intent.returnDate || '';
+  const pax = intent.travelers || 1;
+  return [
+    { name: 'Booking.com',   color: '#003580', icon: '🏨', url: `https://www.booking.com/searchresults.html?ss=${d}&checkin=${ci}&checkout=${co}&group_adults=${pax}` },
+    { name: 'Hotels.com',    color: '#D32F2F', icon: '🏨', url: `https://www.hotels.com/search.do?q-destination=${d}&q-check-in=${ci}&q-check-out=${co}&q-room-0-adults=${pax}` },
+    { name: 'Expedia Hotels',color: '#FFC72C', icon: '🏨', url: `https://www.expedia.com/Hotel-Search?destination=${d}&startDate=${ci}&endDate=${co}&adults=${pax}` },
+    { name: 'MakeMyTrip',    color: '#E8175D', icon: '🏨', url: `https://www.makemytrip.com/hotels/hotel-listing/?checkin=${ci}&checkout=${co}&city=${d}` },
+  ];
+}
+function carLinks(intent: TripIntent) {
+  const d = encodeURIComponent(intent.destination || '');
+  return [
+    { name: 'Rentalcars.com', color: '#E87722', icon: '🚗', url: `https://www.rentalcars.com/SearchResults.do?country=${d}` },
+    { name: 'Expedia Cars',   color: '#FFC72C', icon: '🚗', url: `https://www.expedia.com/carsearch?locn=${d}` },
+    { name: 'Skyscanner Cars',color: '#00A698', icon: '🚗', url: `https://www.skyscanner.com/car-hire` },
+  ];
+}
+function trainLinks(intent: TripIntent) {
+  const o = encodeURIComponent(intent.origin || '');
+  const d = encodeURIComponent(intent.destination || '');
+  return [
+    { name: 'Trainline',   color: '#00C853', icon: '🚂', url: `https://www.thetrainline.com/search/${o}/${d}` },
+    { name: 'Rail Europe', color: '#1565C0', icon: '🚂', url: `https://www.raileurope.com` },
+    { name: 'Omio',        color: '#6200EA', icon: '🚂', url: `https://www.omio.com/trains/${o}/${d}` },
+  ];
+}
+
+// ─── Partner booking button ───────────────────────────────────────────────────
+function PartnerBtn({ name, color, icon, url, onBook }: {
+  name: string; color: string; icon: string; url: string;
+  onBook: () => void;
+}) {
+  return (
+    <button
+      onClick={() => { window.open(url, '_blank'); onBook(); }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 16px', borderRadius: 8, background: 'var(--navy-light)', border: `1px solid ${color}30`, color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.18s', fontFamily: 'DM Sans' }}
+      onMouseEnter={e => { const el = e.currentTarget; el.style.background = `${color}18`; el.style.color = color; el.style.borderColor = color; }}
+      onMouseLeave={e => { const el = e.currentTarget; el.style.background = 'var(--navy-light)'; el.style.color = 'var(--text)'; el.style.borderColor = `${color}30`; }}
+    >
+      {icon} {name} <span style={{ fontSize: 10, opacity: 0.5 }}>↗</span>
+    </button>
+  );
+}
+
+// ─── Score bar ────────────────────────────────────────────────────────────────
 function ScoreBar({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ marginBottom: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span style={{ fontSize: 12, color: 'var(--text-dim)', fontFamily: 'Syne' }}>{label}</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>{value}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold-light)' }}>{value}</span>
       </div>
-      <div className="score-bar">
-        <div className="score-bar-fill" style={{ width: `${value}%` }} />
-      </div>
+      <div className="score-bar"><div className="score-bar-fill" style={{ width: `${value}%` }} /></div>
     </div>
   );
 }
 
-function ItineraryCard({
-  itinerary,
-  index,
-  selected,
-  onSelect,
-}: {
-  itinerary: Itinerary;
-  index: number;
-  selected: boolean;
-  onSelect: () => void;
+// ─── Itinerary card ───────────────────────────────────────────────────────────
+function ItineraryCard({ it, index, intent, onSaveBooking }: {
+  it: Itinerary; index: number; intent: TripIntent;
+  onSaveBooking: (type: string, partner: string, url: string, details: object) => void;
 }) {
-  const flight = itinerary.flights[0];
-  const hotel = itinerary.hotels[0];
+  const flight = it.flights[0];
+  const hotel  = it.hotels[0];
+  const [section, setSection] = useState<'flights'|'hotels'|'cars'|'trains'|null>('flights');
+  const [saved, setSaved] = useState<string[]>([]);
+
+  const handleBook = (type: string, name: string, url: string, details: object) => {
+    onSaveBooking(type, name, url, details);
+    setSaved(p => [...p, `${type}-${name}`]);
+  };
 
   return (
-    <div
-      onClick={onSelect}
-      style={{
-        border: `2px solid ${selected ? 'var(--sky)' : 'var(--night-border)'}`,
-        borderRadius: 16, padding: 24, cursor: 'pointer',
-        background: selected ? 'rgba(14,165,233,0.06)' : 'var(--night-mid)',
-        transition: 'all 0.25s',
-        position: 'relative',
-      }}
-    >
+    <div style={{ border: '1px solid var(--navy-border)', borderRadius: 14, background: 'var(--navy-mid)', overflow: 'hidden' }}>
       {index === 0 && (
-        <div style={{ position: 'absolute', top: -12, left: 20 }}>
-          <span className="badge badge-sky">★ Best Match</span>
+        <div style={{ background: 'linear-gradient(135deg, var(--gold-dark), var(--gold))', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', letterSpacing: '0.06em' }}>★ BEST MATCH</span>
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-        <div>
-          <h3 style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>Option {index + 1}</h3>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <span className="badge badge-sky">{flight?.stops === 0 ? 'Nonstop' : `${flight?.stops} stop`}</span>
-            <span className="badge badge-amber">{flight?.cabin}</span>
-            {itinerary.score.esg > 70 && <span className="badge badge-green">🌿 Eco</span>}
+      <div style={{ padding: 20 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <h3 style={{ fontWeight: 700, fontSize: 17, marginBottom: 6 }}>Option {index + 1}</h3>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <span className="badge badge-navy">{flight?.stops === 0 ? 'Nonstop' : `${flight?.stops} stop`}</span>
+              <span className="badge badge-gold">{flight?.cabin}</span>
+              {it.score.esg > 70 && <span className="badge badge-green">🌿 Eco</span>}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>${it.totalCost.toLocaleString()}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>est. total</div>
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'Syne' }}>
-            ${itinerary.totalCost.toLocaleString()}
+
+        {/* Flight summary */}
+        {flight && (
+          <div style={{ background: 'var(--navy-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>✈ Flight</div>
+                <div style={{ fontWeight: 600 }}>{flight.airline} · {flight.origin} → {flight.destination}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>{flight.duration} · {flight.stops === 0 ? 'Nonstop' : `${flight.stops} stop`}</div>
+              </div>
+              <div style={{ fontWeight: 700, color: 'var(--gold-light)' }}>${flight.price.toLocaleString()}</div>
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>total est.</div>
+        )}
+
+        {/* Hotel summary */}
+        {hotel && (
+          <div style={{ background: 'var(--navy-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>🏨 Hotel</div>
+                <div style={{ fontWeight: 600 }}>{hotel.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>{'★'.repeat(hotel.stars)} · ${hotel.pricePerNight}/night</div>
+              </div>
+              <div style={{ fontWeight: 700, color: 'var(--gold-light)' }}>${hotel.totalPrice.toLocaleString()}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Visa */}
+        <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 7, background: it.visaRequired ? 'rgba(232,85,85,0.08)' : 'rgba(45,212,160,0.07)', border: `1px solid ${it.visaRequired ? 'rgba(232,85,85,0.2)' : 'rgba(45,212,160,0.2)'}`, fontSize: 12, color: it.visaRequired ? 'var(--red)' : 'var(--green)' }}>
+          {it.visaRequired ? `🛂 Visa required · ${it.visaInfo}` : '✓ No visa required for this destination'}
+        </div>
+
+        {/* Scores */}
+        <div style={{ borderTop: '1px solid var(--navy-border)', paddingTop: 14, marginBottom: 18 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>NomadPilot Score — {it.score.overall}/100</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
+            <ScoreBar label="Price"       value={it.score.price} />
+            <ScoreBar label="Time"        value={it.score.time} />
+            <ScoreBar label="Convenience" value={it.score.convenience} />
+            <ScoreBar label="ESG"         value={it.score.esg} />
+          </div>
+        </div>
+
+        {/* Book via partner section */}
+        <div style={{ borderTop: '1px solid var(--navy-border)', paddingTop: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Book directly with partner · Saved to My Trips automatically</p>
+            {saved.length > 0 && <span className="badge badge-green">✓ {saved.length} saved</span>}
+          </div>
+
+          {/* Category tabs */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+            {([['flights','✈ Flights'],['hotels','🏨 Hotels'],['cars','🚗 Cars'],['trains','🚂 Trains']] as [typeof section, string][]).map(([id, label]) => (
+              <button key={id} onClick={() => setSection(section === id ? null : id)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${section === id ? 'var(--gold)' : 'var(--navy-border)'}`, background: section === id ? 'rgba(232,160,32,0.12)' : 'var(--navy-light)', color: section === id ? 'var(--gold)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans', transition: 'all 0.15s' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Partner buttons */}
+          {section === 'flights' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {flightLinks(intent).map(p => (
+                <PartnerBtn key={p.name} {...p} onBook={() => handleBook('flight', p.name, p.url, { from: intent.origin, to: intent.destination, date: intent.departureDate, returnDate: intent.returnDate, travelers: intent.travelers, estimatedPrice: flight?.price })} />
+              ))}
+            </div>
+          )}
+          {section === 'hotels' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {hotelLinks(intent).map(p => (
+                <PartnerBtn key={p.name} {...p} onBook={() => handleBook('hotel', p.name, p.url, { destination: intent.destination, checkIn: intent.departureDate, checkOut: intent.returnDate, travelers: intent.travelers, estimatedPrice: hotel?.totalPrice })} />
+              ))}
+            </div>
+          )}
+          {section === 'cars' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {carLinks(intent).map(p => (
+                <PartnerBtn key={p.name} {...p} onBook={() => handleBook('car', p.name, p.url, { destination: intent.destination, pickUp: intent.departureDate, dropOff: intent.returnDate })} />
+              ))}
+            </div>
+          )}
+          {section === 'trains' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {trainLinks(intent).map(p => (
+                <PartnerBtn key={p.name} {...p} onBook={() => handleBook('train', p.name, p.url, { from: intent.origin, to: intent.destination, date: intent.departureDate })} />
+              ))}
+            </div>
+          )}
+
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>
+            Clicking a partner opens their site in a new tab. Your booking details are saved to My Trips automatically.
+          </p>
         </div>
       </div>
-
-      {/* Flight */}
-      {flight && (
-        <div style={{
-          background: 'var(--night-light)', borderRadius: 10, padding: '12px 16px',
-          marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <div>
-            <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 2 }}>✈ Flight</div>
-            <div style={{ fontWeight: 600 }}>{flight.airline} {flight.flightNumber}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-              {new Date(flight.departure).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} →{' '}
-              {new Date(flight.arrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              {' · '}{flight.duration}
-            </div>
-          </div>
-          <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 16 }}>
-            ${flight.price.toLocaleString()}
-          </div>
-        </div>
-      )}
-
-      {/* Hotel */}
-      {hotel && (
-        <div style={{
-          background: 'var(--night-light)', borderRadius: 10, padding: '12px 16px',
-          marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        }}>
-          <div>
-            <div style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 2 }}>🏨 Hotel</div>
-            <div style={{ fontWeight: 600 }}>{hotel.name}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-              {'★'.repeat(hotel.stars)} · ${hotel.pricePerNight}/night
-            </div>
-          </div>
-          <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 16 }}>
-            ${hotel.totalPrice.toLocaleString()}
-          </div>
-        </div>
-      )}
-
-      {/* Scores */}
-      <div style={{ borderTop: '1px solid var(--night-border)', paddingTop: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: '50%',
-            background: `conic-gradient(var(--sky) ${itinerary.score.overall * 3.6}deg, var(--night-border) 0)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--night-mid)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>
-              {itinerary.score.overall}
-            </div>
-          </div>
-          <span style={{ fontSize: 13, fontFamily: 'Syne', fontWeight: 600 }}>NomadPilot Score</span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
-          <ScoreBar label="Price" value={itinerary.score.price} />
-          <ScoreBar label="Time" value={itinerary.score.time} />
-          <ScoreBar label="Convenience" value={itinerary.score.convenience} />
-          <ScoreBar label="ESG" value={itinerary.score.esg} />
-        </div>
-      </div>
-
-      {selected && (
-        <div style={{
-          marginTop: 16, padding: '10px 0',
-          borderTop: '1px solid rgba(14,165,233,0.2)',
-          display: 'flex', justifyContent: 'center',
-          color: 'var(--sky)', fontFamily: 'Syne', fontWeight: 700, fontSize: 13,
-          letterSpacing: '0.05em',
-        }}>
-          ✓ SELECTED
-        </div>
-      )}
     </div>
   );
 }
 
-export default function ConfirmationStage({
-  itineraries,
-  intent,
-  onConfirm,
-}: {
+// ─── Main component ───────────────────────────────────────────────────────────
+export default function ConfirmationStage({ itineraries, intent, onSaveBooking }: {
   itineraries: Itinerary[];
   intent: TripIntent;
-  onConfirm: (itinerary: Itinerary) => void;
+  onSaveBooking: (type: string, partner: string, url: string, details: object) => void;
 }) {
-  const [selected, setSelected] = useState<string>(itineraries[0]?.id);
-
-  const selectedItinerary = itineraries.find(i => i.id === selected);
-
   return (
-    <div className="fade-up" style={{ maxWidth: 900, margin: '0 auto' }}>
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ fontSize: 32, fontWeight: 800, marginBottom: 8 }}>
-          Your top options ✦
-        </h2>
-        <p style={{ color: 'var(--text-dim)', fontSize: 16 }}>
-          {intent.origin} → {intent.destination} · {new Date(intent.departureDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+    <div className="fade-up" style={{ maxWidth: 960, margin: '0 auto' }}>
+      <div style={{ marginBottom: 28 }}>
+        <h2 style={{ fontSize: 34, fontWeight: 700, marginBottom: 6 }}>Your top options</h2>
+        <p style={{ color: 'var(--text-dim)', fontSize: 15 }}>
+          {intent.origin} → {intent.destination}
+          {intent.departureDate && ` · ${new Date(intent.departureDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
           {intent.returnDate && ` → ${new Date(intent.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
-          {intent.budget && ` · Budget $${intent.budget.toLocaleString()}`}
         </p>
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
         {itineraries.map((it, i) => (
-          <ItineraryCard
-            key={it.id}
-            itinerary={it}
-            index={i}
-            selected={it.id === selected}
-            onSelect={() => setSelected(it.id)}
-          />
+          <ItineraryCard key={it.id} it={it} index={i} intent={intent} onSaveBooking={onSaveBooking} />
         ))}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-        <button className="btn btn-ghost" onClick={() => window.location.reload()}>
-          ← Start over
-        </button>
-        <button
-          className="btn btn-primary"
-          onClick={() => selectedItinerary && onConfirm(selectedItinerary)}
-          disabled={!selectedItinerary}
-          style={{ padding: '14px 32px', fontSize: 16 }}
-        >
-          Book Option {itineraries.findIndex(i => i.id === selected) + 1} →
-        </button>
       </div>
     </div>
   );
