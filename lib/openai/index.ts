@@ -1,6 +1,6 @@
 import { TripIntent } from '@/types';
 
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 async function callGemini(prompt: string, systemPrompt: string): Promise<string> {
   const res = await fetch(`${GEMINI_BASE}?key=${process.env.GEMINI_API_KEY}`, {
