@@ -210,7 +210,7 @@ function AIDataWidget({ destination, type, title, icon }: { destination: string;
 
   // Safety
   if (type === 'safety' && data?.overallLevel) {
-    const levelColor = { low: 'var(--green)', medium: 'var(--amber)', high: 'var(--red)', critical: '#ff0000' }[data.overallLevel] || 'var(--text-dim)';
+    const levelColor = ({ low: 'var(--green)', medium: 'var(--amber)', high: 'var(--red)', critical: '#ff0000' } as Record<string, string>)[data.overallLevel as string] || 'var(--text-dim)';
     return (
       <div>
         <div style={{ padding: '16px 20px', borderRadius: 10, background: `${levelColor}12`, border: `1px solid ${levelColor}40`, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
