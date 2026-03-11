@@ -70,4 +70,54 @@ export default function PricingPage() {
           <div style={{ display: 'inline-flex', background: 'var(--navy-mid)', border: '1px solid var(--navy-border)', borderRadius: 10, padding: 4, gap: 4 }}>
             {(['monthly', 'annual'] as const).map(b => (
               <button key={b} onClick={() => setBilling(b)} style={{ padding: '8px 20px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'DM Sans', fontWeight: 600, fontSize: 13, background: billing === b ? 'var(--gold)' : 'transparent', color: billing === b ? 'var(--navy)' : 'var(--text-dim)', transition: 'all 0.2s' }}>
-                {b === 'monthly' ? 'Monthly' : <span>Annual <span style={{ marginLeft: 4, fontSize: 10, background: 'rgba(45,212,160,0.2)', color: 'var(--green)'
+                {b === 'monthly' ? 'Monthly' : <span>Annual <span style={{ marginLeft: 4, fontSize: 10, background: 'rgba(45,212,160,0.2)', color: 'var(--green)', padding: '1px 6px', borderRadius: 4 }}>−20%</span></span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 20, marginBottom: 48 }}>
+          {PLANS.map(plan => (
+            <div key={plan.id} style={{ border: `2px solid ${plan.highlight ? 'var(--gold)' : 'var(--navy-border)'}`, borderRadius: 16, padding: 28, background: plan.highlight ? 'rgba(232,160,32,0.04)' : 'var(--navy-mid)', position: 'relative', boxShadow: plan.highlight ? '0 0 32px rgba(232,160,32,0.12)' : 'none' }}>
+              {'badge' in plan && plan.badge && (
+                <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)' }}>
+                  <span className="badge badge-gold">{plan.badge}</span>
+                </div>
+              )}
+              <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{plan.name}</h3>
+              <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 20 }}>{plan.tagline}</p>
+              <div style={{ marginBottom: 24 }}>
+                <span style={{ fontSize: 40, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: plan.highlight ? 'var(--gold)' : 'var(--text)' }}>
+                  ${plan.price[billing]}
+                </span>
+                <span style={{ fontSize: 14, color: 'var(--text-dim)' }}>/mo</span>
+              </div>
+              <ul style={{ listStyle: 'none', marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {plan.features.map(f => (
+                  <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-dim)' }}>
+                    <span style={{ color: 'var(--green)', fontSize: 12, flexShrink: 0 }}>✓</span> {f}
+                  </li>
+                ))}
+              </ul>
+              {plan.price.monthly === 0 ? (
+                <button className="btn btn-navy" style={{ width: '100%', justifyContent: 'center' }}>{plan.cta}</button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleSubscribe(plan.id, 'stripe')} disabled={loading === `${plan.id}-stripe`}>
+                    {loading === `${plan.id}-stripe` ? <span className="spin">◌</span> : '💳'} Pay with Card
+                  </button>
+                  <button className="btn btn-navy" style={{ width: '100%', justifyContent: 'center' }} onClick={() => handleSubscribe(plan.id, 'paypal')} disabled={loading === `${plan.id}-paypal`}>
+                    {loading === `${plan.id}-paypal` ? <span className="spin">◌</span> : '🅿'} Pay with PayPal
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
+          All plans include a 7-day free trial · Cancel anytime · No hidden fees
+        </div>
+      </div>
+    </div>
+  );
+}
