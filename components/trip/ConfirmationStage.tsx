@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Itinerary, TripIntent } from '@/types';
+import VisaChecker from '@/components/trip/VisaChecker';
 
 // ─── Deep-link builders ───────────────────────────────────────────────────────
 function flightLinks(intent: TripIntent) {
@@ -223,11 +224,18 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
     <div className="fade-up" style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ marginBottom: 28 }}>
         <h2 style={{ fontSize: 34, fontWeight: 700, marginBottom: 6 }}>Your top options</h2>
-        <p style={{ color: 'var(--text-dim)', fontSize: 15 }}>
+        <p style={{ color: 'var(--text-dim)', fontSize: 15, marginBottom: 16 }}>
           {intent.origin} → {intent.destination}
           {intent.departureDate && ` · ${new Date(intent.departureDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
           {intent.returnDate && ` → ${new Date(intent.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
         </p>
+        {(intent.constraints?.visaPassport || (intent as any).nationality) && (
+          <VisaChecker
+            nationality={intent.constraints?.visaPassport || (intent as any).nationality || ''}
+            destination={intent.destination}
+            inline={true}
+          />
+        )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
         {itineraries.map((it, i) => (
