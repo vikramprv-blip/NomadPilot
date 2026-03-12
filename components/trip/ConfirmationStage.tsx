@@ -10,9 +10,9 @@ function flightLinks(intent: TripIntent) {
   const pax = intent.travelers || 1;
   const cls = intent.preferences?.cabinClass || 'economy';
   return [
-    { name: 'Skyscanner',    color: '#00A698', icon: '✈', url: `https://www.skyscanner.com/transport/flights/${o}/${d}/${dep}/${ret}/?adults=${pax}&cabinclass=${cls}` },
-    { name: 'Expedia',       color: '#FFC72C', icon: '✈', url: `https://www.expedia.com/Flights-Search?leg1=from:${o},to:${d},departure:${dep}&passengers=adults:${pax}` },
-    { name: 'MakeMyTrip',    color: '#E8175D', icon: '✈', url: `https://www.makemytrip.com/flights/international-flights/${o.toLowerCase()}-${d.toLowerCase()}.html` },
+    { name: 'Skyscanner',     color: '#00A698', icon: '✈', url: `https://www.skyscanner.com/transport/flights/${o}/${d}/${dep}/${ret}/?adults=${pax}&cabinclass=${cls}` },
+    { name: 'Expedia',        color: '#FFC72C', icon: '✈', url: `https://www.expedia.com/Flights-Search?leg1=from:${o},to:${d},departure:${dep}&passengers=adults:${pax}` },
+    { name: 'MakeMyTrip',     color: '#E8175D', icon: '✈', url: `https://www.makemytrip.com/flights/international-flights/${o.toLowerCase()}-${d.toLowerCase()}.html` },
     { name: 'Google Flights', color: '#4285F4', icon: '✈', url: `https://www.google.com/travel/flights?q=flights+from+${o}+to+${d}` },
   ];
 }
@@ -21,10 +21,10 @@ function hotelLinks(intent: TripIntent) {
   const ci = intent.departureDate || '', co = intent.returnDate || '';
   const pax = intent.travelers || 1;
   return [
-    { name: 'Booking.com',   color: '#003580', icon: '🏨', url: `https://www.booking.com/searchresults.html?ss=${d}&checkin=${ci}&checkout=${co}&group_adults=${pax}` },
-    { name: 'Hotels.com',    color: '#D32F2F', icon: '🏨', url: `https://www.hotels.com/search.do?q-destination=${d}&q-check-in=${ci}&q-check-out=${co}&q-room-0-adults=${pax}` },
-    { name: 'Expedia Hotels',color: '#FFC72C', icon: '🏨', url: `https://www.expedia.com/Hotel-Search?destination=${d}&startDate=${ci}&endDate=${co}&adults=${pax}` },
-    { name: 'MakeMyTrip',    color: '#E8175D', icon: '🏨', url: `https://www.makemytrip.com/hotels/hotel-listing/?checkin=${ci}&checkout=${co}&city=${d}` },
+    { name: 'Booking.com',    color: '#003580', icon: '🏨', url: `https://www.booking.com/searchresults.html?ss=${d}&checkin=${ci}&checkout=${co}&group_adults=${pax}` },
+    { name: 'Hotels.com',     color: '#D32F2F', icon: '🏨', url: `https://www.hotels.com/search.do?q-destination=${d}&q-check-in=${ci}&q-check-out=${co}&q-room-0-adults=${pax}` },
+    { name: 'Expedia Hotels', color: '#FFC72C', icon: '🏨', url: `https://www.expedia.com/Hotel-Search?destination=${d}&startDate=${ci}&endDate=${co}&adults=${pax}` },
+    { name: 'MakeMyTrip',     color: '#E8175D', icon: '🏨', url: `https://www.makemytrip.com/hotels/hotel-listing/?checkin=${ci}&checkout=${co}&city=${d}` },
   ];
 }
 function carLinks(intent: TripIntent) {
@@ -80,15 +80,33 @@ function ItineraryCard({ it, index, intent, onSaveBooking }: {
   it: Itinerary; index: number; intent: TripIntent;
   onSaveBooking: (type: string, partner: string, url: string, details: object) => void;
 }) {
-  const flight = it.flights[0];
-  const hotel  = it.hotels[0];
-  const [section, setSection] = useState<'flights'|'hotels'|'cars'|'trains'|null>('flights');
-  const [saved, setSaved] = useState<string[]>([]);
+  const flight  = it.flights[0];
+  const hotel   = it.hotels[0];
+  const services = intent.services || ['flight', 'hotel'];
+  const wantFlight = services.includes('flight');
+  const wantHotel  = services.includes('hotel');
+  const wantCar    = services.includes('car');
+  const wantTrain  = services.includes('train');
+
+  // Default open tab: first selected service
+  const defaultTab = wantFlight ? 'flights' : wantHotel ? 'hotels' : wantCar ? 'cars' : wantTrain ? 'trains' : null;
+  const [section, setSection] = useState<'flights'|'hotels'|'cars'|'trains'|null>(defaultTab as any);
+  const [saved, setSaved]     = useState<string[]>([]);
 
   const handleBook = (type: string, name: string, url: string, details: object) => {
     onSaveBooking(type, name, url, details);
     setSaved(p => [...p, `${type}-${name}`]);
   };
+
+  // Only show total cost for selected services
+  const displayCost = wantHotel ? it.totalCost : (flight?.price || 0);
+
+  // Build visible tab list from selected services
+  const tabs: [string, string][] = [];
+  if (wantFlight) tabs.push(['flights', '✈ Flights']);
+  if (wantHotel)  tabs.push(['hotels',  '🏨 Hotels']);
+  if (wantCar)    tabs.push(['cars',    '🚗 Cars']);
+  if (wantTrain)  tabs.push(['trains',  '🚂 Trains']);
 
   return (
     <div style={{ border: '1px solid var(--navy-border)', borderRadius: 14, background: 'var(--navy-mid)', overflow: 'hidden' }}>
@@ -104,19 +122,19 @@ function ItineraryCard({ it, index, intent, onSaveBooking }: {
           <div>
             <h3 style={{ fontWeight: 700, fontSize: 17, marginBottom: 6 }}>Option {index + 1}</h3>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <span className="badge badge-navy">{flight?.stops === 0 ? 'Nonstop' : `${flight?.stops} stop`}</span>
-              <span className="badge badge-gold">{flight?.cabin}</span>
+              {wantFlight && <span className="badge badge-navy">{flight?.stops === 0 ? 'Nonstop' : `${flight?.stops} stop`}</span>}
+              {wantFlight && <span className="badge badge-gold">{flight?.cabin}</span>}
               {it.score.esg > 70 && <span className="badge badge-green">🌿 Eco</span>}
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>${it.totalCost.toLocaleString()}</div>
+            <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>${displayCost.toLocaleString()}</div>
             <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>est. total</div>
           </div>
         </div>
 
-        {/* Flight summary */}
-        {flight && (
+        {/* Flight summary — only if flights selected */}
+        {wantFlight && flight && (
           <div style={{ background: 'var(--navy-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
@@ -129,8 +147,8 @@ function ItineraryCard({ it, index, intent, onSaveBooking }: {
           </div>
         )}
 
-        {/* Hotel summary */}
-        {hotel && (
+        {/* Hotel summary — only if hotels selected */}
+        {wantHotel && hotel && (
           <div style={{ background: 'var(--navy-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
@@ -143,7 +161,7 @@ function ItineraryCard({ it, index, intent, onSaveBooking }: {
           </div>
         )}
 
-        {/* Visa */}
+        {/* Visa row from Gemini itinerary data */}
         <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 7, background: it.visaRequired ? 'rgba(232,85,85,0.08)' : 'rgba(45,212,160,0.07)', border: `1px solid ${it.visaRequired ? 'rgba(232,85,85,0.2)' : 'rgba(45,212,160,0.2)'}`, fontSize: 12, color: it.visaRequired ? 'var(--red)' : 'var(--green)' }}>
           {it.visaRequired ? `🛂 Visa required · ${it.visaInfo}` : '✓ No visa required for this destination'}
         </div>
@@ -166,38 +184,38 @@ function ItineraryCard({ it, index, intent, onSaveBooking }: {
             {saved.length > 0 && <span className="badge badge-green">✓ {saved.length} saved</span>}
           </div>
 
-          {/* Category tabs */}
+          {/* Category tabs — only show selected services */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-            {([['flights','✈ Flights'],['hotels','🏨 Hotels'],['cars','🚗 Cars'],['trains','🚂 Trains']] as [typeof section, string][]).map(([id, label]) => (
-              <button key={id} onClick={() => setSection(section === id ? null : id)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${section === id ? 'var(--gold)' : 'var(--navy-border)'}`, background: section === id ? 'rgba(232,160,32,0.12)' : 'var(--navy-light)', color: section === id ? 'var(--gold)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans', transition: 'all 0.15s' }}>
+            {tabs.map(([id, label]) => (
+              <button key={id} onClick={() => setSection(section === id ? null : id as any)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${section === id ? 'var(--gold)' : 'var(--navy-border)'}`, background: section === id ? 'rgba(232,160,32,0.12)' : 'var(--navy-light)', color: section === id ? 'var(--gold)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans', transition: 'all 0.15s' }}>
                 {label}
               </button>
             ))}
           </div>
 
           {/* Partner buttons */}
-          {section === 'flights' && (
+          {section === 'flights' && wantFlight && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {flightLinks(intent).map(p => (
                 <PartnerBtn key={p.name} {...p} onBook={() => handleBook('flight', p.name, p.url, { from: intent.origin, to: intent.destination, date: intent.departureDate, returnDate: intent.returnDate, travelers: intent.travelers, estimatedPrice: flight?.price })} />
               ))}
             </div>
           )}
-          {section === 'hotels' && (
+          {section === 'hotels' && wantHotel && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {hotelLinks(intent).map(p => (
                 <PartnerBtn key={p.name} {...p} onBook={() => handleBook('hotel', p.name, p.url, { destination: intent.destination, checkIn: intent.departureDate, checkOut: intent.returnDate, travelers: intent.travelers, estimatedPrice: hotel?.totalPrice })} />
               ))}
             </div>
           )}
-          {section === 'cars' && (
+          {section === 'cars' && wantCar && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {carLinks(intent).map(p => (
                 <PartnerBtn key={p.name} {...p} onBook={() => handleBook('car', p.name, p.url, { destination: intent.destination, pickUp: intent.departureDate, dropOff: intent.returnDate })} />
               ))}
             </div>
           )}
-          {section === 'trains' && (
+          {section === 'trains' && wantTrain && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {trainLinks(intent).map(p => (
                 <PartnerBtn key={p.name} {...p} onBook={() => handleBook('train', p.name, p.url, { from: intent.origin, to: intent.destination, date: intent.departureDate })} />
@@ -220,6 +238,8 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
   intent: TripIntent;
   onSaveBooking: (type: string, partner: string, url: string, details: object) => void;
 }) {
+  const nationality = intent.constraints?.visaPassport || (intent as any).nationality || '';
+
   return (
     <div className="fade-up" style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ marginBottom: 28 }}>
@@ -229,9 +249,10 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
           {intent.departureDate && ` · ${new Date(intent.departureDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
           {intent.returnDate && ` → ${new Date(intent.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
         </p>
-        {(intent.constraints?.visaPassport || (intent as any).nationality) && (
+        {/* Only show visa banner if we have a nationality that is NOT an IATA code */}
+        {nationality && !/^[A-Z]{3}$/.test(nationality.toUpperCase()) && (
           <VisaChecker
-            nationality={intent.constraints?.visaPassport || (intent as any).nationality || ''}
+            nationality={nationality}
             destination={intent.destination}
             inline={true}
           />
@@ -245,3 +266,4 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
     </div>
   );
 }
+

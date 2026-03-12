@@ -11,6 +11,7 @@ export interface TripIntent {
   travelers: number;
   preferences: TripPreferences;
   constraints: TripConstraints;
+  services?: string[]; // e.g. ['flight','hotel','car','train']
 }
 
 export interface TripPreferences {
