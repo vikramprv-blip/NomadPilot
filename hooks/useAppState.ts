@@ -10,19 +10,17 @@ function safeIntent(raw: any): TripIntent {
     raw:           raw?.raw           || '',
     origin:        raw?.origin        || raw?.from || '',
     destination:   raw?.destination   || raw?.to   || '',
-    departureDate: raw?.departureDate || raw?.date  || '',
+    departureDate: raw?.departureDate || raw?.date  || raw?.departure || '',
     returnDate:    raw?.returnDate    || raw?.return || '',
     travelers:     Number(raw?.travelers) || 1,
-    budget:        raw?.preferences?.maxBudget || raw?.budget || undefined,
-    nationality:   raw?.nationality   || undefined,
-    tripType:      raw?.tripType      || 'return',
+    budget:        raw?.budget        || undefined,
     preferences: {
-      cabinClass: raw?.preferences?.cabinClass || 'economy',
+      cabinClass: raw?.preferences?.cabinClass || raw?.cabinClass || 'economy',
     },
     constraints: {
       visaPassport: raw?.nationality || undefined,
     },
-  } as TripIntent & { nationality?: string; tripType?: string };
+  };
 }
 
 export function useAppState() {
@@ -32,37 +30,6 @@ export function useAppState() {
 
   const setStage = useCallback((stage: AppStage) => {
     setState(prev => ({ ...prev, stage }));
-  }, []);
-
-  const processInput = useCallback(async (userInput: string) => {
-    setLoading(true);
-    setError(null);
-    setState(prev => ({ ...prev, stage: 'processing' }));
-
-    try {
-      const res  = await fetch('/api/ai-brain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMessage: userInput }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'AI brain failed');
-
-      const intent = safeIntent(data.intent || data);
-
-      if (!intent.origin && !intent.destination && !intent.raw) {
-throw new Error('Please enter both origin and destination.');
-      }
-
-      const tripId = data.tripId || `trip_${Date.now()}`;
-      setState(prev => ({ ...prev, stage: 'generation', intent, tripId }));
-      await generateTrip(intent, tripId);
-    } catch (err: any) {
-      setError(err.message);
-      setState(prev => ({ ...prev, stage: 'input' }));
-    } finally {
-      setLoading(false);
-    }
   }, []);
 
   const generateTrip = useCallback(async (intent: TripIntent, tripId?: string) => {
@@ -83,6 +50,69 @@ throw new Error('Please enter both origin and destination.');
       setLoading(false);
     }
   }, []);
+
+  // Structured search form — bypasses Gemini entirely
+  const processStructuredSearch = useCallback(async (formData: any) => {
+    setLoading(true);
+    setError(null);
+    setState(prev => ({ ...prev, stage: 'processing' }));
+    try {
+      const leg    = formData.legs?.[0] || {};
+      const intent = safeIntent({
+        origin:        leg.from       || '',
+        destination:   leg.to         || '',
+        departureDate: leg.departure  || leg.date || '',
+        returnDate:    leg.return     || '',
+        travelers:     formData.travelers  || 1,
+        cabinClass:    formData.cabinClass || 'economy',
+        nationality:   formData.nationality || '',
+        preferences:   { cabinClass: formData.cabinClass || 'economy' },
+        constraints:   { visaPassport: formData.nationality || '' },
+      });
+      if (!intent.origin || !intent.destination) {
+        throw new Error('Please enter both origin and destination.');
+      }
+      if (!intent.departureDate) {
+        throw new Error('Please select a departure date.');
+      }
+      const tripId = `trip_${Date.now()}`;
+      setState(prev => ({ ...prev, stage: 'generation', intent, tripId }));
+      await generateTrip(intent, tripId);
+    } catch (err: any) {
+      setError(err.message);
+      setState(prev => ({ ...prev, stage: 'input' }));
+    } finally {
+      setLoading(false);
+    }
+  }, [generateTrip]);
+
+  // AI planner tab — uses Gemini to parse natural language
+  const processInput = useCallback(async (userInput: string) => {
+    setLoading(true);
+    setError(null);
+    setState(prev => ({ ...prev, stage: 'processing' }));
+    try {
+      const res  = await fetch('/api/ai-brain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userMessage: userInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'AI brain failed');
+      const intent = safeIntent(data.intent || data);
+      if (!intent.origin && !intent.destination) {
+        throw new Error('Could not understand the request. Please use the Search tab instead.');
+      }
+      const tripId = `trip_${Date.now()}`;
+      setState(prev => ({ ...prev, stage: 'generation', intent, tripId }));
+      await generateTrip(intent, tripId);
+    } catch (err: any) {
+      setError(err.message);
+      setState(prev => ({ ...prev, stage: 'input' }));
+    } finally {
+      setLoading(false);
+    }
+  }, [generateTrip]);
 
   const confirmItinerary = useCallback((itinerary: Itinerary) => {
     setState(prev => ({ ...prev, stage: 'booking', selectedItinerary: itinerary }));
@@ -117,5 +147,5 @@ throw new Error('Please enter both origin and destination.');
     setError(null);
   }, []);
 
-  return { state, loading, error, processInput, confirmItinerary, bookTrip, setStage, reset };
+  return { state, loading, error, processInput, processStructuredSearch, confirmItinerary, bookTrip, setStage, reset };
 }
