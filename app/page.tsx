@@ -20,7 +20,7 @@ import ChatBot from '@/components/chat/ChatBot';
 type Tab = 'search' | 'mytrips' | 'destination' | 'account';
 
 export default function HomePage() {
-  const { state, loading, error, processInput, confirmItinerary, bookTrip, setStage, reset } = useAppState();
+  const { state, loading, error, processInput, processStructuredSearch, confirmItinerary, bookTrip, setStage, reset } = useAppState();
   const { user, loading: authLoading, signOut } = useAuth();
   const { permission, supported, requestPermission, notify } = usePushNotifications(user?.id);
 
