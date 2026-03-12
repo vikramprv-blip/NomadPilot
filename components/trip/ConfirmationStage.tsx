@@ -102,8 +102,8 @@ const AIRLINE_NAMES: Record<string, string> = {
   SQ:'Singapore Airlines', CX:'Cathay Pacific', NH:'ANA', JL:'Japan Airlines',
   OZ:'Asiana', KE:'Korean Air', CI:'China Airlines', BR:'EVA Air',
   MH:'Malaysia Airlines', GA:'Garuda Indonesia', PR:'Philippine Airlines',
-  AI:'Air India', 6E:'IndiGo', UK:'Vistara', IX:'Air India Express',
-  EY:'Etihad', FZ:'flydubai', G9:'Air Arabia',
+  AI:'Air India', '6E':'IndiGo', UK:'Vistara', IX:'Air India Express',
+  EY:'Etihad', FZ:'flydubai', 'G9':'Air Arabia',
 };
 
 function airlineName(code: string) { return AIRLINE_NAMES[code] || code; }
