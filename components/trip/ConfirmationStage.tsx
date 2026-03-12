@@ -67,6 +67,28 @@ function buildTrainLinks(intent: TripIntent) {
   ];
 }
 
+// ─── Currency symbol lookup ──────────────────────────────────────────────────
+const CURRENCY_SYMBOLS: Record<string,string> = {
+  USD:'$', EUR:'€', GBP:'£', INR:'₹', AED:'د.إ', SGD:'S$', AUD:'A$',
+  CAD:'C$', JPY:'¥', CNY:'¥', CHF:'Fr', SEK:'kr', NOK:'kr', DKK:'kr',
+  THB:'฿', MYR:'RM', SAR:'ر.س', QAR:'ر.ق', KWD:'د.ك', ZAR:'R',
+  BRL:'R$', MXN:'$', NZD:'NZ$', HKD:'HK$', TRY:'₺', KRW:'₩',
+};
+
+function currencySymbol(code: string): string {
+  return CURRENCY_SYMBOLS[code] || code + ' ';
+}
+
+function fmtPrice(amount: number, currency: string): string {
+  const sym = currencySymbol(currency);
+  // For currencies without cents (JPY, KRW, INR in large amounts)
+  const noCents = ['JPY','KRW','IDR','VND'].includes(currency);
+  return sym + amount.toLocaleString(undefined, {
+    minimumFractionDigits: noCents ? 0 : 0,
+    maximumFractionDigits: noCents ? 0 : 0,
+  });
+}
+
 // ─── Airline name lookup ──────────────────────────────────────────────────────
 const AIRLINE_NAMES: Record<string, string> = {
   AF:'Air France', SK:'SAS', LH:'Lufthansa', BA:'British Airways', EK:'Emirates',
@@ -231,7 +253,7 @@ function HotelSection({ hotels, intent, onBook }: {
             <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 3 }}>{'★'.repeat(hotel.stars || 3)} · {hotel.address}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>${hotel.pricePerNight}/night</div>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>{fmtPrice(hotel.pricePerNight, intent.currency || hotel.currency || 'USD')}/night</div>
             <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               {links.map(p => (
                 <button key={p.name}
@@ -355,7 +377,7 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
           {intent.origin?.toUpperCase()} → {intent.destination?.toUpperCase()}
           {intent.departureDate && ` · ${new Date(intent.departureDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`}
           {intent.returnDate && ` · Return ${new Date(intent.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
-          {` · ${intent.travelers || 1} passenger${(intent.travelers||1)>1?'s':''} · ${intent.preferences?.cabinClass || 'Economy'}`}
+          {` · ${intent.travelers || 1} passenger${(intent.travelers||1)>1?'s':''} · ${intent.preferences?.cabinClass || 'Economy'} · ${intent.currency || 'USD'}`}
         </p>
         {nationality && !/^[A-Z]{3}$/.test(nationality.toUpperCase()) && (
           <VisaChecker nationality={nationality} destination={intent.destination} inline={true} />
@@ -368,12 +390,12 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
           <div style={{ display: 'flex', gap: 20 }}>
             <div>
               <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cheapest</span>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>${minPrice.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>{fmtPrice(minPrice, intent.currency || 'USD')}</div>
             </div>
             {minPrice !== maxPrice && (
               <div>
                 <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Up to</span>
-                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>${maxPrice.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{fmtPrice(maxPrice, intent.currency || 'USD')}</div>
               </div>
             )}
             <div>

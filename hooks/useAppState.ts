@@ -14,6 +14,7 @@ function safeIntent(raw: any): TripIntent {
     returnDate:    raw?.returnDate    || raw?.return || '',
     travelers:     Number(raw?.travelers) || 1,
     budget:        raw?.budget        || undefined,
+    currency:      raw?.currency      || 'USD',
     services:      raw?.services      || ['flight', 'hotel'],
     preferences: {
       cabinClass: raw?.preferences?.cabinClass || raw?.cabinClass || 'economy',
@@ -49,6 +50,7 @@ export function useAppState() {
         travelers:     formData.travelers || 1,
         cabinClass:    formData.cabinClass || 'economy',
         nationality:   formData.nationality || '',
+        currency:      formData.currency || 'USD',
         services:      formData.services || ['flight', 'hotel'],
         preferences: {
           cabinClass: formData.cabinClass || 'economy',
