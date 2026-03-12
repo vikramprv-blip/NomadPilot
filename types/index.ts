@@ -88,8 +88,8 @@ export interface HotelOption {
   name: string;
   stars: number;
   address: string;
-  checkIn: string;
-  checkOut: string;
+  checkIn?: string;
+  checkOut?: string;
   pricePerNight: number;
   totalPrice: number;
   currency: string;
@@ -97,6 +97,8 @@ export interface HotelOption {
   amenities: string[];
   loyaltyPoints?: number;
   co2kg?: number;
+  bookingUrl?: string;
+  images?: string[];
 }
 
 export interface GroundOption {

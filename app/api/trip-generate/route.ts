@@ -1,8 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchFlights, searchHotels } from '@/lib/amadeus';
+import { searchKiwiFlights, KiwiFlight } from '@/lib/rapidapi/kiwi';
+import { searchBookingHotels, searchBookingFlights, BookingFlight } from '@/lib/rapidapi/booking';
 import { createClient } from '@/lib/supabase/server';
 import { TripIntent, Itinerary, FlightOption, HotelOption } from '@/types';
 import { nanoid } from 'nanoid';
+
+// Convert Kiwi flight → FlightOption
+function kiwiToFlight(k: KiwiFlight): FlightOption {
+  return {
+    id:           k.id,
+    airline:      k.airline,
+    flightNumber: k.flightNumber,
+    origin:       k.origin,
+    destination:  k.destination,
+    departure:    k.departure,
+    arrival:      k.arrival,
+    duration:     k.duration,
+    stops:        k.stops,
+    cabin:        k.cabin,
+    price:        k.price,
+    currency:     k.currency,
+    bookingClass: 'Y',
+    loyaltyMiles: Math.round(k.price * 5),
+    co2kg:        Math.round(k.price * 0.8),
+  };
+}
+
+// Convert Booking hotel → HotelOption
+function bookingToHotel(b: any): HotelOption {
+  return {
+    id:            b.id,
+    name:          b.name,
+    stars:         b.stars || 3,
+    rating:        b.rating || 0,
+    address:       b.address || '',
+    pricePerNight: b.pricePerNight || 0,
+    totalPrice:    b.pricePerNight || 0,
+    currency:      b.currency || 'USD',
+    amenities:     [],
+    images:        b.imageUrl ? [b.imageUrl] : [],
+    bookingUrl:    b.bookingUrl || '',
+  };
+}
+
 
 function scoreItinerary(
   flights: FlightOption[],
@@ -45,11 +86,45 @@ export async function POST(req: NextRequest) {
       : ['flight', 'hotel'];
     const needsHotel  = services.includes('hotel');
 
-    // Parallel search — only fetch hotels if requested
-    const [flights, hotels] = await Promise.all([
-      searchFlights(intent),
-      needsHotel ? searchHotels(intent) : Promise.resolve([]),
-    ]);
+    const hasRapidAPI = !!process.env.RAPIDAPI_KEY;
+
+    // ── Flights: Kiwi (better coverage) → fallback Amadeus ──────────────────
+    let flights: FlightOption[] = [];
+    if (hasRapidAPI) {
+      const kiwiResults = await searchKiwiFlights({
+        origin:      intent.origin,
+        destination: intent.destination,
+        date:        intent.departureDate,
+        returnDate:  intent.returnDate || undefined,
+        adults:      intent.travelers || 1,
+        cabin:       intent.preferences?.cabinClass || 'economy',
+        currency:    intent.currency || 'USD',
+      });
+      flights = kiwiResults.map(kiwiToFlight);
+    }
+    if (flights.length === 0) {
+      // Fallback to Amadeus
+      flights = await searchFlights(intent);
+    }
+
+    // ── Hotels: Booking.com → fallback Amadeus ───────────────────────────────
+    let hotels: HotelOption[] = [];
+    if (needsHotel && hasRapidAPI) {
+      const checkOut = intent.returnDate?.trim()
+        ? intent.returnDate
+        : new Date(new Date(intent.departureDate).getTime() + 3 * 86400000).toISOString().slice(0, 10);
+      const bkgHotels = await searchBookingHotels({
+        destination: intent.destination,
+        checkIn:     intent.departureDate,
+        checkOut,
+        adults:      intent.travelers || 1,
+        currency:    intent.currency || 'USD',
+      });
+      hotels = bkgHotels.map(bookingToHotel);
+    }
+    if (needsHotel && hotels.length === 0) {
+      hotels = await searchHotels(intent);
+    }
 
     if (!flights.length) {
       return NextResponse.json({ error: 'No flights found for these dates' }, { status: 404 });

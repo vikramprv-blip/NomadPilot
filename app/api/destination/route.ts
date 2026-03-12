@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkGeminiRateLimit } from '@/lib/ratelimit/gemini';
 import { getCached, setCached } from '@/lib/ratelimit/cache';
 import { safeParseGeminiJSON } from '@/lib/ratelimit/parseJSON';
+import { searchTARestaurants, searchTAAttractions } from '@/lib/rapidapi/tripadvisor';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
@@ -51,6 +52,24 @@ export async function GET(req: NextRequest) {
       fallback = { overallLevel: 'low', alerts: [], healthAdvice: '', crimeAdvice: '', transportAdvice: '', lastUpdated: '' };
 
     } else if (type === 'restaurants') {
+      // Try TripAdvisor real data first
+      if (process.env.RAPIDAPI_KEY) {
+        try {
+          const taRestaurants = await searchTARestaurants(destination);
+          if (taRestaurants.length > 0) {
+            const result = {
+              mustEat: taRestaurants.map(r => ({
+                name: r.name, cuisine: r.cuisine, priceRange: r.price || '$$',
+                description: `${r.rating}★ · ${r.reviews.toLocaleString()} reviews`,
+                area: r.address, url: r.url,
+              })),
+              foodAreas: [], localDishes: [], source: 'TripAdvisor',
+            };
+            await setCached(type, cacheKey, JSON.stringify(result));
+            return NextResponse.json(result);
+          }
+        } catch {}
+      }
       raw = await askGemini(`Top restaurants in ${destination}. Return ONLY valid JSON, double-quoted keys:
 {"mustEat":[{"name":"string","cuisine":"string","priceRange":"$$","description":"string","area":"string","tip":"string"}],"foodAreas":[{"name":"string","description":"string"}],"localDishes":[{"name":"string","description":"string"}]}`);
       fallback = { mustEat: [], foodAreas: [], localDishes: [] };
