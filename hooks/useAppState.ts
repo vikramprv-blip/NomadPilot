@@ -1,38 +1,37 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { AppState, AppStage, TripIntent, Itinerary, BookingResult } from '@/types';
+import { AppState, AppStage, TripIntent, Itinerary } from '@/types';
 
 const initialState: AppState = { stage: 'input' };
 
-// Safe intent with all fields defaulted
 function safeIntent(raw: any): TripIntent {
   return {
-    origin:        raw?.origin        || raw?.from        || '',
-    destination:   raw?.destination   || raw?.to          || '',
-    departureDate: raw?.departureDate || raw?.date        || '',
-    returnDate:    raw?.returnDate    || raw?.return       || null,
+    raw:           raw?.raw           || '',
+    origin:        raw?.origin        || raw?.from || '',
+    destination:   raw?.destination   || raw?.to   || '',
+    departureDate: raw?.departureDate || raw?.date  || '',
+    returnDate:    raw?.returnDate    || raw?.return || '',
     travelers:     Number(raw?.travelers) || 1,
-    tripType:      raw?.tripType      || 'return',
-    nationality:   raw?.nationality   || null,
+    budget:        raw?.preferences?.maxBudget || raw?.budget || undefined,
     preferences: {
       cabinClass: raw?.preferences?.cabinClass || 'economy',
-      maxBudget:  raw?.preferences?.maxBudget  || null,
-      services:   raw?.preferences?.services   || ['flight', 'hotel'],
+    },
+    constraints: {
+      visaPassport: raw?.nationality || undefined,
     },
   };
 }
 
 export function useAppState() {
-  const [state, setState]   = useState<AppState>(initialState);
+  const [state, setState]     = useState<AppState>(initialState);
   const [loading, setLoading] = useState(false);
-  const [error, setError]   = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
 
   const setStage = useCallback((stage: AppStage) => {
     setState(prev => ({ ...prev, stage }));
   }, []);
 
-  // Stage 1 → 2: Parse user intent via AI Brain
   const processInput = useCallback(async (userInput: string) => {
     setLoading(true);
     setError(null);
@@ -45,20 +44,15 @@ export function useAppState() {
         body: JSON.stringify({ userMessage: userInput }),
       });
       const data = await res.json();
-
       if (!res.ok) throw new Error(data.error || 'AI brain failed');
 
-      // API returns intent directly OR wrapped in data.intent
-      const rawIntent = data.intent || data;
-      const intent    = safeIntent(rawIntent);
+      const intent = safeIntent(data.intent || data);
 
-      // If we couldn't parse origin/destination, show friendly error
       if (!intent.origin && !intent.destination) {
-        throw new Error('Could not understand your travel request. Please try being more specific, e.g. "Fly from Dubai to London next Friday"');
+        throw new Error('Could not understand your travel request. Try: "Fly from Dubai to London next Friday, 2 people"');
       }
 
       const tripId = data.tripId || `trip_${Date.now()}`;
-
       setState(prev => ({ ...prev, stage: 'generation', intent, tripId }));
       await generateTrip(intent, tripId);
     } catch (err: any) {
@@ -69,7 +63,6 @@ export function useAppState() {
     }
   }, []);
 
-  // Stage 2 → 3: Generate itineraries
   const generateTrip = useCallback(async (intent: TripIntent, tripId?: string) => {
     setLoading(true);
     try {
@@ -79,14 +72,8 @@ export function useAppState() {
         body: JSON.stringify({ intent, tripId }),
       });
       const data = await res.json();
-
       if (!res.ok) throw new Error(data.error || 'Trip generation failed');
-
-      setState(prev => ({
-        ...prev,
-        stage: 'confirmation',
-        itineraries: data.itineraries || [],
-      }));
+      setState(prev => ({ ...prev, stage: 'confirmation', itineraries: data.itineraries || [] }));
     } catch (err: any) {
       setError(err.message);
       setState(prev => ({ ...prev, stage: 'input' }));
@@ -95,12 +82,10 @@ export function useAppState() {
     }
   }, []);
 
-  // Stage 3 → 4
   const confirmItinerary = useCallback((itinerary: Itinerary) => {
     setState(prev => ({ ...prev, stage: 'booking', selectedItinerary: itinerary }));
   }, []);
 
-  // Stage 4 → 5
   const bookTrip = useCallback(async (travelerInfo: object) => {
     setLoading(true);
     setError(null);
@@ -109,10 +94,10 @@ export function useAppState() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          itinerary:    state.selectedItinerary,
+          itinerary: state.selectedItinerary,
           travelerInfo,
-          tripId:       state.tripId,
-          userId:       state.userId,
+          tripId:    state.tripId,
+          userId:    state.userId,
         }),
       });
       const data = await res.json();
