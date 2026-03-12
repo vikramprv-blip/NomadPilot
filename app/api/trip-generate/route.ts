@@ -58,11 +58,11 @@ export async function POST(req: NextRequest) {
     // Build up to 3 itinerary options
     const itineraries: Itinerary[] = [];
     const hotelOptions  = hotels.slice(0, 3);
-    const flightOptions = flights.slice(0, 3);
+    const flightOptions = flights.slice(0, 10); // Show up to 10 flight options
 
-    for (let i = 0; i < Math.min(3, flightOptions.length); i++) {
+    for (let i = 0; i < flightOptions.length; i++) {
       const selectedFlight = flightOptions[i];
-      const selectedHotel  = needsHotel ? (hotelOptions[i] || hotelOptions[0] || null) : null;
+      const selectedHotel  = needsHotel ? (hotelOptions[i % Math.max(hotelOptions.length, 1)] || null) : null;
 
       // Skip only if hotel was requested but none available
       if (needsHotel && !selectedHotel) continue;

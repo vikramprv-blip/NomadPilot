@@ -1,41 +1,63 @@
 'use client';
 import { useState } from 'react';
-import { Itinerary, TripIntent } from '@/types';
+import { Itinerary, TripIntent, FlightOption, HotelOption } from '@/types';
 import VisaChecker from '@/components/trip/VisaChecker';
 
-// ─── Deep-link builders ───────────────────────────────────────────────────────
-function flightLinks(intent: TripIntent) {
-  const o = intent.origin || '', d = intent.destination || '';
-  const dep = intent.departureDate || '', ret = intent.returnDate || '';
-  const pax = intent.travelers || 1;
-  const cls = intent.preferences?.cabinClass || 'economy';
+// ─── Pre-filled deep-link builders ───────────────────────────────────────────
+function buildFlightLinks(flight: FlightOption, intent: TripIntent) {
+  const o   = flight.origin;
+  const d   = flight.destination;
+  const dep = intent.departureDate || '';
+  const ret = intent.returnDate    || '';
+  const pax = intent.travelers     || 1;
+  const cls = (intent.preferences?.cabinClass || 'economy').toLowerCase();
+  const skyCabin: Record<string,string> = { economy:'economy', premium_economy:'premiumeconomy', business:'business', first:'first' };
+
+  // Skyscanner: /transport/flights/BLL/DEL/20260318/?adults=1&cabinclass=economy
+  const skyUrl = `https://www.skyscanner.com/transport/flights/${o}/${d}/${dep.replace(/-/g,'')}${ret ? '/'+ret.replace(/-/g,'') : ''}/?adults=${pax}&cabinclass=${skyCabin[cls]||'economy'}`;
+
+  // Expedia: pre-fill leg1
+  const expUrl = `https://www.expedia.com/Flights-Search?leg1=from:${o},to:${d},departure:${dep}TANYT&passengers=adults:${pax},infantinlap:N&options=cabinclass:${cls}&mode=search&trip=oneway`;
+
+  // MakeMyTrip: international flights with IATA
+  const tripType = ret ? 'R' : 'O';
+  const mmtUrl = `https://www.makemytrip.com/flights/international-flights/${o.toLowerCase()}-${d.toLowerCase()}.html?tripType=${tripType}&paxType=A-${pax}_C-0_I-0&intl=true&dd=${dep.replace(/-/g,'')}&srcCity=${o}&dstCity=${d}`;
+
+  // Google Flights: clean URL
+  const gfUrl = `https://www.google.com/travel/flights/search?tfs=CBwQAhoeEgoyMDI2LTAzLTE4agcIARIDQkxMcgcIARIDREVMGgYI/////wFAAUgBcAGCAQsI____________AUAB`;
+  const gfSimple = `https://www.google.com/travel/flights?q=flights+from+${o}+to+${d}+on+${dep}`;
+
   return [
-    { name: 'Skyscanner',     color: '#00A698', icon: '✈', url: `https://www.skyscanner.com/transport/flights/${o}/${d}/${dep}/${ret}/?adults=${pax}&cabinclass=${cls}` },
-    { name: 'Expedia',        color: '#FFC72C', icon: '✈', url: `https://www.expedia.com/Flights-Search?leg1=from:${o},to:${d},departure:${dep}&passengers=adults:${pax}` },
-    { name: 'MakeMyTrip',     color: '#E8175D', icon: '✈', url: `https://www.makemytrip.com/flights/international-flights/${o.toLowerCase()}-${d.toLowerCase()}.html` },
-    { name: 'Google Flights', color: '#4285F4', icon: '✈', url: `https://www.google.com/travel/flights?q=flights+from+${o}+to+${d}` },
+    { name: 'Skyscanner',     color: '#00A698', icon: '✈', url: skyUrl },
+    { name: 'Expedia',        color: '#FFC72C', icon: '✈', url: expUrl },
+    { name: 'MakeMyTrip',     color: '#E8175D', icon: '✈', url: mmtUrl },
+    { name: 'Google Flights', color: '#4285F4', icon: '✈', url: gfSimple },
   ];
 }
-function hotelLinks(intent: TripIntent) {
-  const d = encodeURIComponent(intent.destination || '');
-  const ci = intent.departureDate || '', co = intent.returnDate || '';
-  const pax = intent.travelers || 1;
+
+function buildHotelLinks(intent: TripIntent) {
+  const d   = encodeURIComponent(intent.destination || '');
+  const ci  = intent.departureDate || '';
+  const co  = intent.returnDate    || '';
+  const pax = intent.travelers     || 1;
   return [
     { name: 'Booking.com',    color: '#003580', icon: '🏨', url: `https://www.booking.com/searchresults.html?ss=${d}&checkin=${ci}&checkout=${co}&group_adults=${pax}` },
     { name: 'Hotels.com',     color: '#D32F2F', icon: '🏨', url: `https://www.hotels.com/search.do?q-destination=${d}&q-check-in=${ci}&q-check-out=${co}&q-room-0-adults=${pax}` },
     { name: 'Expedia Hotels', color: '#FFC72C', icon: '🏨', url: `https://www.expedia.com/Hotel-Search?destination=${d}&startDate=${ci}&endDate=${co}&adults=${pax}` },
-    { name: 'MakeMyTrip',     color: '#E8175D', icon: '🏨', url: `https://www.makemytrip.com/hotels/hotel-listing/?checkin=${ci}&checkout=${co}&city=${d}` },
   ];
 }
-function carLinks(intent: TripIntent) {
-  const d = encodeURIComponent(intent.destination || '');
+
+function buildCarLinks(intent: TripIntent) {
+  const d   = encodeURIComponent(intent.destination || '');
+  const dep = intent.departureDate || '';
   return [
-    { name: 'Rentalcars.com', color: '#E87722', icon: '🚗', url: `https://www.rentalcars.com/SearchResults.do?country=${d}` },
-    { name: 'Expedia Cars',   color: '#FFC72C', icon: '🚗', url: `https://www.expedia.com/carsearch?locn=${d}` },
-    { name: 'Skyscanner Cars',color: '#00A698', icon: '🚗', url: `https://www.skyscanner.com/car-hire` },
+    { name: 'Rentalcars.com',  color: '#E87722', icon: '🚗', url: `https://www.rentalcars.com/SearchResults.do?country=${d}&dateFrom=${dep}` },
+    { name: 'Expedia Cars',    color: '#FFC72C', icon: '🚗', url: `https://www.expedia.com/carsearch?locn=${d}&date1=${dep}` },
+    { name: 'Skyscanner Cars', color: '#00A698', icon: '🚗', url: `https://www.skyscanner.com/car-hire/${intent.destination?.toLowerCase() || ''}` },
   ];
 }
-function trainLinks(intent: TripIntent) {
+
+function buildTrainLinks(intent: TripIntent) {
   const o = encodeURIComponent(intent.origin || '');
   const d = encodeURIComponent(intent.destination || '');
   return [
@@ -45,191 +67,198 @@ function trainLinks(intent: TripIntent) {
   ];
 }
 
-// ─── Partner booking button ───────────────────────────────────────────────────
-function PartnerBtn({ name, color, icon, url, onBook }: {
-  name: string; color: string; icon: string; url: string;
-  onBook: () => void;
-}) {
-  return (
-    <button
-      onClick={() => { window.open(url, '_blank'); onBook(); }}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '10px 16px', borderRadius: 8, background: 'var(--navy-light)', border: `1px solid ${color}30`, color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.18s', fontFamily: 'DM Sans' }}
-      onMouseEnter={e => { const el = e.currentTarget; el.style.background = `${color}18`; el.style.color = color; el.style.borderColor = color; }}
-      onMouseLeave={e => { const el = e.currentTarget; el.style.background = 'var(--navy-light)'; el.style.color = 'var(--text)'; el.style.borderColor = `${color}30`; }}
-    >
-      {icon} {name} <span style={{ fontSize: 10, opacity: 0.5 }}>↗</span>
-    </button>
-  );
+// ─── Airline name lookup ──────────────────────────────────────────────────────
+const AIRLINE_NAMES: Record<string, string> = {
+  AF:'Air France', SK:'SAS', LH:'Lufthansa', BA:'British Airways', EK:'Emirates',
+  QR:'Qatar Airways', TK:'Turkish Airlines', KL:'KLM', IB:'Iberia', AZ:'ITA Airways',
+  LO:'LOT Polish', OS:'Austrian', SN:'Brussels Airlines', TP:'TAP Air Portugal',
+  AY:'Finnair', DY:'Norwegian', WF:'Widerøe', FR:'Ryanair', U2:'EasyJet',
+  AA:'American', UA:'United', DL:'Delta', WN:'Southwest', B6:'JetBlue',
+  AS:'Alaska', F9:'Frontier', NK:'Spirit', G4:'Allegiant', SY:'Sun Country',
+  AC:'Air Canada', WS:'WestJet', TS:'Air Transat',
+  QF:'Qantas', VA:'Virgin Australia', JQ:'Jetstar',
+  SQ:'Singapore Airlines', CX:'Cathay Pacific', NH:'ANA', JL:'Japan Airlines',
+  OZ:'Asiana', KE:'Korean Air', CI:'China Airlines', BR:'EVA Air',
+  MH:'Malaysia Airlines', GA:'Garuda Indonesia', PR:'Philippine Airlines',
+  AI:'Air India', 6E:'IndiGo', UK:'Vistara', IX:'Air India Express',
+  EY:'Etihad', FZ:'flydubai', G9:'Air Arabia',
+};
+
+function airlineName(code: string) { return AIRLINE_NAMES[code] || code; }
+
+// ─── Format ISO datetime ──────────────────────────────────────────────────────
+function fmtTime(iso: string) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }); }
+  catch { return iso.slice(11, 16); }
 }
 
-// ─── Score bar ────────────────────────────────────────────────────────────────
-function ScoreBar({ label, value }: { label: string; value: number }) {
-  return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-        <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--gold-light)' }}>{value}</span>
-      </div>
-      <div className="score-bar"><div className="score-bar-fill" style={{ width: `${value}%` }} /></div>
-    </div>
-  );
+function fmtDuration(dur: string) {
+  // "PT13H40M" → "13h 40m"
+  if (!dur) return '';
+  return dur.replace('PT','').replace('H','h ').replace('M','m').trim();
 }
 
-// ─── Itinerary card ───────────────────────────────────────────────────────────
-function ItineraryCard({ it, index, intent, onSaveBooking }: {
-  it: Itinerary; index: number; intent: TripIntent;
-  onSaveBooking: (type: string, partner: string, url: string, details: object) => void;
+// ─── Single flight row ────────────────────────────────────────────────────────
+function FlightRow({ flight, intent, rank, onBook }: {
+  flight: FlightOption;
+  intent: TripIntent;
+  rank: number;
+  onBook: (partner: string, url: string) => void;
 }) {
-  const flight  = it.flights[0];
-  const hotel   = it.hotels[0];
-  const services = (intent.services && intent.services.length > 0) ? intent.services : ['flight', 'hotel', 'car', 'train'];
-  const wantFlight = services.includes('flight');
-  const wantHotel  = services.includes('hotel');
-  const wantCar    = services.includes('car');
-  const wantTrain  = services.includes('train');
-
-  // Default open tab: first selected service
-  const defaultTab = wantFlight ? 'flights' : wantHotel ? 'hotels' : wantCar ? 'cars' : wantTrain ? 'trains' : null;
-  const [section, setSection] = useState<'flights'|'hotels'|'cars'|'trains'|null>(defaultTab as any);
-  const [saved, setSaved]     = useState<string[]>([]);
-
-  const handleBook = (type: string, name: string, url: string, details: object) => {
-    onSaveBooking(type, name, url, details);
-    setSaved(p => [...p, `${type}-${name}`]);
-  };
-
-  // Only show total cost for selected services
-  const displayCost = wantHotel ? it.totalCost : (flight?.price || 0);
-
-  // Build visible tab list from selected services
-  const tabs: [string, string][] = [];
-  if (wantFlight) tabs.push(['flights', '✈ Flights']);
-  if (wantHotel)  tabs.push(['hotels',  '🏨 Hotels']);
-  if (wantCar)    tabs.push(['cars',    '🚗 Cars']);
-  if (wantTrain)  tabs.push(['trains',  '🚂 Trains']);
+  const [open, setOpen] = useState(false);
+  const links = buildFlightLinks(flight, intent);
 
   return (
-    <div style={{ border: '1px solid var(--navy-border)', borderRadius: 14, background: 'var(--navy-mid)', overflow: 'hidden' }}>
-      {index === 0 && (
-        <div style={{ background: 'linear-gradient(135deg, var(--gold-dark), var(--gold))', padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--navy)', letterSpacing: '0.06em' }}>★ BEST MATCH</span>
+    <div style={{ border: '1px solid var(--navy-border)', borderRadius: 12, background: rank === 0 ? 'rgba(232,160,32,0.05)' : 'var(--navy-mid)', overflow: 'hidden', transition: 'box-shadow 0.2s' }}>
+      {rank === 0 && (
+        <div style={{ background: 'linear-gradient(90deg, rgba(232,160,32,0.18), transparent)', padding: '4px 16px', borderBottom: '1px solid rgba(232,160,32,0.15)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gold)', letterSpacing: '0.06em' }}>★ BEST PRICE</span>
         </div>
       )}
 
-      <div style={{ padding: 20 }}>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+      {/* Main row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', alignItems: 'center', gap: 16, padding: '16px 20px' }}>
+        {/* Airline + route */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 8, background: 'var(--navy-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--gold)', border: '1px solid var(--navy-border)', flexShrink: 0 }}>
+            {flight.airline}
+          </div>
           <div>
-            <h3 style={{ fontWeight: 700, fontSize: 17, marginBottom: 6 }}>Option {index + 1}</h3>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {wantFlight && <span className="badge badge-navy">{flight?.stops === 0 ? 'Nonstop' : `${flight?.stops} stop`}</span>}
-              {wantFlight && <span className="badge badge-gold">{flight?.cabin}</span>}
-              {it.score.esg > 70 && <span className="badge badge-green">🌿 Eco</span>}
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>${displayCost.toLocaleString()}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>est. total</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{airlineName(flight.airline)}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>{flight.flightNumber} · {flight.cabin}</div>
           </div>
         </div>
 
-        {/* Flight summary — only if flights selected */}
-        {wantFlight && flight && (
-          <div style={{ background: 'var(--navy-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>✈ Flight</div>
-                <div style={{ fontWeight: 600 }}>{flight.airline} · {flight.origin} → {flight.destination}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>{flight.duration} · {flight.stops === 0 ? 'Nonstop' : `${flight.stops} stop`}</div>
-              </div>
-              <div style={{ fontWeight: 700, color: 'var(--gold-light)' }}>${flight.price.toLocaleString()}</div>
-            </div>
+        {/* Times + route */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em' }}>
+            {fmtTime(flight.departure)}
+            <span style={{ fontSize: 14, color: 'var(--text-dim)', margin: '0 8px' }}>→</span>
+            {fmtTime(flight.arrival)}
           </div>
-        )}
-
-        {/* Hotel summary — only if hotels selected */}
-        {wantHotel && hotel && (
-          <div style={{ background: 'var(--navy-light)', borderRadius: 8, padding: '10px 14px', marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>🏨 Hotel</div>
-                <div style={{ fontWeight: 600 }}>{hotel.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>{'★'.repeat(hotel.stars)} · ${hotel.pricePerNight}/night</div>
-              </div>
-              <div style={{ fontWeight: 700, color: 'var(--gold-light)' }}>${hotel.totalPrice.toLocaleString()}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Visa row from Gemini itinerary data */}
-        <div style={{ marginBottom: 14, padding: '8px 12px', borderRadius: 7, background: it.visaRequired ? 'rgba(232,85,85,0.08)' : 'rgba(45,212,160,0.07)', border: `1px solid ${it.visaRequired ? 'rgba(232,85,85,0.2)' : 'rgba(45,212,160,0.2)'}`, fontSize: 12, color: it.visaRequired ? 'var(--red)' : 'var(--green)' }}>
-          {it.visaRequired ? `🛂 Visa required · ${it.visaInfo}` : '✓ No visa required for this destination'}
-        </div>
-
-        {/* Scores */}
-        <div style={{ borderTop: '1px solid var(--navy-border)', paddingTop: 14, marginBottom: 18 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>NomadPilot Score — {it.score.overall}/100</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
-            <ScoreBar label="Price"       value={it.score.price} />
-            <ScoreBar label="Time"        value={it.score.time} />
-            <ScoreBar label="Convenience" value={it.score.convenience} />
-            <ScoreBar label="ESG"         value={it.score.esg} />
+          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>
+            {flight.origin} → {flight.destination}
           </div>
         </div>
 
-        {/* Book via partner section */}
-        <div style={{ borderTop: '1px solid var(--navy-border)', paddingTop: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Book directly with partner · Saved to My Trips automatically</p>
-            {saved.length > 0 && <span className="badge badge-green">✓ {saved.length} saved</span>}
+        {/* Duration + stops */}
+        <div style={{ textAlign: 'center', minWidth: 80 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{fmtDuration(flight.duration)}</div>
+          <div style={{ fontSize: 12, marginTop: 2 }}>
+            {flight.stops === 0
+              ? <span style={{ color: 'var(--green)' }}>Nonstop</span>
+              : <span style={{ color: 'var(--text-dim)' }}>{flight.stops} stop{flight.stops > 1 ? 's' : ''}</span>
+            }
           </div>
+        </div>
 
-          {/* Category tabs — only show selected services */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-            {tabs.map(([id, label]) => (
-              <button key={id} onClick={() => setSection(section === id ? null : id as any)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${section === id ? 'var(--gold)' : 'var(--navy-border)'}`, background: section === id ? 'rgba(232,160,32,0.12)' : 'var(--navy-light)', color: section === id ? 'var(--gold)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'DM Sans', transition: 'all 0.15s' }}>
-                {label}
+        {/* Price + book button */}
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>
+            ${flight.price.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>{flight.currency} · per person</div>
+          <button
+            onClick={() => setOpen(!open)}
+            style={{ padding: '8px 18px', borderRadius: 7, background: 'var(--gold)', border: 'none', color: 'var(--navy)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans', transition: 'opacity 0.15s' }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+          >
+            {open ? 'Hide ↑' : 'Book ↓'}
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded booking options */}
+      {open && (
+        <div style={{ borderTop: '1px solid var(--navy-border)', padding: '14px 20px', background: 'rgba(255,255,255,0.02)' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 10 }}>
+            Select a partner to book this flight — your search is pre-filled:
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {links.map(p => (
+              <button
+                key={p.name}
+                onClick={() => { window.open(p.url, '_blank'); onBook(p.name, p.url); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 7, background: 'var(--navy-light)', border: `1.5px solid ${p.color}50`, color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'DM Sans' }}
+                onMouseEnter={e => { e.currentTarget.style.background = `${p.color}18`; e.currentTarget.style.color = p.color; e.currentTarget.style.borderColor = p.color; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--navy-light)'; e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = `${p.color}50`; }}
+              >
+                <span style={{ color: p.color }}>{p.icon}</span> {p.name} <span style={{ fontSize: 10, opacity: 0.4 }}>↗</span>
               </button>
             ))}
           </div>
-
-          {/* Partner buttons */}
-          {section === 'flights' && wantFlight && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {flightLinks(intent).map(p => (
-                <PartnerBtn key={p.name} {...p} onBook={() => handleBook('flight', p.name, p.url, { from: intent.origin, to: intent.destination, date: intent.departureDate, returnDate: intent.returnDate, travelers: intent.travelers, estimatedPrice: flight?.price })} />
-              ))}
-            </div>
-          )}
-          {section === 'hotels' && wantHotel && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {hotelLinks(intent).map(p => (
-                <PartnerBtn key={p.name} {...p} onBook={() => handleBook('hotel', p.name, p.url, { destination: intent.destination, checkIn: intent.departureDate, checkOut: intent.returnDate, travelers: intent.travelers, estimatedPrice: hotel?.totalPrice })} />
-              ))}
-            </div>
-          )}
-          {section === 'cars' && wantCar && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {carLinks(intent).map(p => (
-                <PartnerBtn key={p.name} {...p} onBook={() => handleBook('car', p.name, p.url, { destination: intent.destination, pickUp: intent.departureDate, dropOff: intent.returnDate })} />
-              ))}
-            </div>
-          )}
-          {section === 'trains' && wantTrain && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {trainLinks(intent).map(p => (
-                <PartnerBtn key={p.name} {...p} onBook={() => handleBook('train', p.name, p.url, { from: intent.origin, to: intent.destination, date: intent.departureDate })} />
-              ))}
-            </div>
-          )}
-
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>
-            Clicking a partner opens their site in a new tab. Your booking details are saved to My Trips automatically.
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+            ✓ Booking saved to My Trips automatically when you click a partner.
           </p>
         </div>
-      </div>
+      )}
     </div>
   );
+}
+
+// ─── Hotel section ────────────────────────────────────────────────────────────
+function HotelSection({ hotels, intent, onBook }: {
+  hotels: HotelOption[];
+  intent: TripIntent;
+  onBook: (type: string, partner: string, url: string, details: object) => void;
+}) {
+  const links = buildHotelLinks(intent);
+  return (
+    <div style={{ marginTop: 32 }}>
+      <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+        🏨 Hotels in {intent.destination}
+      </h3>
+      {hotels.slice(0, 3).map((hotel, i) => (
+        <div key={hotel.id} style={{ border: '1px solid var(--navy-border)', borderRadius: 12, background: 'var(--navy-mid)', padding: '16px 20px', marginBottom: 12, display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 16 }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{hotel.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 3 }}>{'★'.repeat(hotel.stars || 3)} · {hotel.address}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>${hotel.pricePerNight}/night</div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              {links.map(p => (
+                <button key={p.name}
+                  onClick={() => { window.open(p.url, '_blank'); onBook('hotel', p.name, p.url, { hotel: hotel.name, destination: intent.destination }); }}
+                  style={{ padding: '6px 12px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = `${p.color}15`; e.currentTarget.style.color = p.color; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--navy-light)'; e.currentTarget.style.color = 'var(--text)'; }}
+                >
+                  {p.icon} {p.name} ↗
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+      {hotels.length === 0 && (
+        <div style={{ padding: '20px', borderRadius: 10, background: 'var(--navy-mid)', border: '1px solid var(--navy-border)', textAlign: 'center' }}>
+          <p style={{ color: 'var(--text-dim)', fontSize: 13, marginBottom: 10 }}>Search hotels directly:</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {links.map(p => (
+              <button key={p.name}
+                onClick={() => { window.open(p.url, '_blank'); onBook('hotel', p.name, p.url, {}); }}
+                style={{ padding: '8px 14px', borderRadius: 7, background: 'var(--navy-light)', border: `1.5px solid ${p.color}50`, color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}
+              >
+                {p.icon} {p.name} ↗
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sort + filter bar ────────────────────────────────────────────────────────
+type SortKey = 'price' | 'duration' | 'stops';
+
+function parseDuration(dur: string): number {
+  const h = parseInt(dur.match(/(\d+)H/)?.[1] || '0');
+  const m = parseInt(dur.match(/(\d+)M/)?.[1] || '0');
+  return h * 60 + m;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -238,47 +267,173 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
   intent: TripIntent;
   onSaveBooking: (type: string, partner: string, url: string, details: object) => void;
 }) {
-  const nationality = intent.constraints?.visaPassport || (intent as any).nationality || '';
+  const [sort, setSort]   = useState<SortKey>('price');
+  const [saved, setSaved] = useState<string[]>([]);
 
-  // Debug in browser console
-  if (typeof window !== 'undefined') {
-    console.log('[ConfirmationStage] itineraries:', itineraries?.length, 'services:', intent.services);
+  const nationality = intent.constraints?.visaPassport || (intent as any).nationality || '';
+  const services    = (intent.services && intent.services.length > 0) ? intent.services : ['flight', 'hotel'];
+  const wantFlight  = services.includes('flight');
+  const wantHotel   = services.includes('hotel');
+  const wantCar     = services.includes('car');
+  const wantTrain   = services.includes('train');
+
+  // Collect all unique flights across itineraries
+  const allFlights = Array.from(
+    new Map(
+      itineraries.flatMap(it => it.flights).map(f => [f.id, f])
+    ).values()
+  );
+
+  // Collect hotels
+  const allHotels = Array.from(
+    new Map(
+      itineraries.flatMap(it => it.hotels).map(h => [h.id, h])
+    ).values()
+  );
+
+  // Sort
+  const sorted = [...allFlights].sort((a, b) => {
+    if (sort === 'price')    return a.price - b.price;
+    if (sort === 'duration') return parseDuration(a.duration) - parseDuration(b.duration);
+    if (sort === 'stops')    return a.stops - b.stops;
+    return 0;
+  });
+
+  const minPrice = allFlights.length ? Math.min(...allFlights.map(f => f.price)) : 0;
+  const maxPrice = allFlights.length ? Math.max(...allFlights.map(f => f.price)) : 0;
+
+  const handleBook = (partner: string, url: string, flight: FlightOption) => {
+    const key = `${flight.id}-${partner}`;
+    if (!saved.includes(key)) setSaved(p => [...p, key]);
+    onSaveBooking('flight', partner, url, {
+      from: flight.origin, to: flight.destination,
+      airline: flight.airline, flightNumber: flight.flightNumber,
+      departure: flight.departure, arrival: flight.arrival,
+      date: intent.departureDate, returnDate: intent.returnDate,
+      travelers: intent.travelers, price: flight.price,
+    });
+  };
+
+  if (!itineraries || itineraries.length === 0) {
+    return (
+      <div className="fade-up" style={{ maxWidth: 860, margin: '0 auto', textAlign: 'center', padding: '80px 20px' }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>✈</div>
+        <h3 style={{ fontSize: 22, fontWeight: 600, marginBottom: 8 }}>No flights found</h3>
+        <p style={{ color: 'var(--text-dim)', fontSize: 14 }}>
+          No results for {(intent.origin||'').toUpperCase()} → {(intent.destination||'').toUpperCase()} on {intent.departureDate}.
+          Try different dates or airports.
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+          Tip: Amadeus test environment has limited routes. Major hubs like LHR→JFK work best.
+        </p>
+      </div>
+    );
   }
 
   return (
-    <div className="fade-up" style={{ maxWidth: 960, margin: '0 auto' }}>
-      <div style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 34, fontWeight: 700, marginBottom: 6 }}>Your top options</h2>
-        <p style={{ color: 'var(--text-dim)', fontSize: 15, marginBottom: 16 }}>
-          {intent.origin} → {intent.destination}
-          {intent.departureDate && ` · ${new Date(intent.departureDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
-          {intent.returnDate && ` → ${new Date(intent.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+    <div className="fade-up" style={{ maxWidth: 860, margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 32, fontWeight: 700, marginBottom: 4 }}>
+          {wantFlight ? 'Available Flights' : 'Your Results'}
+        </h2>
+        <p style={{ color: 'var(--text-dim)', fontSize: 14, marginBottom: 12 }}>
+          {intent.origin?.toUpperCase()} → {intent.destination?.toUpperCase()}
+          {intent.departureDate && ` · ${new Date(intent.departureDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`}
+          {intent.returnDate && ` · Return ${new Date(intent.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+          {` · ${intent.travelers || 1} passenger${(intent.travelers||1)>1?'s':''} · ${intent.preferences?.cabinClass || 'Economy'}`}
         </p>
         {nationality && !/^[A-Z]{3}$/.test(nationality.toUpperCase()) && (
-          <VisaChecker
-            nationality={nationality}
-            destination={intent.destination}
-            inline={true}
-          />
+          <VisaChecker nationality={nationality} destination={intent.destination} inline={true} />
         )}
       </div>
 
-      {(!itineraries || itineraries.length === 0) ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-dim)' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>✈</div>
-          <h3 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8, color: 'var(--text)' }}>No results found</h3>
-          <p style={{ fontSize: 14, marginBottom: 16 }}>
-            No flights found for {(intent.origin || '').toUpperCase()} → {(intent.destination || '').toUpperCase()} on {intent.departureDate}.
-          </p>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Try different dates, or note that the Amadeus test environment has limited routes.
-          </p>
+      {/* Stats + sort bar */}
+      {wantFlight && sorted.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: 10, background: 'var(--navy-mid)', border: '1px solid var(--navy-border)', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 20 }}>
+            <div>
+              <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cheapest</span>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>${minPrice.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+            </div>
+            {minPrice !== maxPrice && (
+              <div>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Up to</span>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>${maxPrice.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+              </div>
+            )}
+            <div>
+              <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Options</span>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{sorted.length}</div>
+            </div>
+            {saved.length > 0 && (
+              <div>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Saved</span>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--gold)' }}>{saved.length}</div>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Sort:</span>
+            {(['price','duration','stops'] as SortKey[]).map(k => (
+              <button key={k} onClick={() => setSort(k)}
+                style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${sort===k?'var(--gold)':'var(--navy-border)'}`, background: sort===k?'rgba(232,160,32,0.12)':'var(--navy-light)', color: sort===k?'var(--gold)':'var(--text-dim)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans', textTransform: 'capitalize' }}>
+                {k}
+              </button>
+            ))}
+          </div>
         </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
-          {itineraries.map((it, i) => (
-            <ItineraryCard key={it.id} it={it} index={i} intent={intent} onSaveBooking={onSaveBooking} />
+      )}
+
+      {/* Flight list */}
+      {wantFlight && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {sorted.map((flight, i) => (
+            <FlightRow
+              key={flight.id}
+              flight={flight}
+              intent={intent}
+              rank={i}
+              onBook={(partner, url) => handleBook(partner, url, flight)}
+            />
           ))}
+        </div>
+      )}
+
+      {/* Hotels section */}
+      {wantHotel && (
+        <HotelSection hotels={allHotels} intent={intent} onBook={onSaveBooking} />
+      )}
+
+      {/* Car / Train shortcuts */}
+      {(wantCar || wantTrain) && (
+        <div style={{ marginTop: 28, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          {wantCar && (
+            <div style={{ flex: 1, minWidth: 240, border: '1px solid var(--navy-border)', borderRadius: 12, padding: '16px 20px', background: 'var(--navy-mid)' }}>
+              <div style={{ fontWeight: 600, marginBottom: 10 }}>🚗 Car Rental</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {buildCarLinks(intent).map(p => (
+                  <button key={p.name} onClick={() => { window.open(p.url, '_blank'); onSaveBooking('car', p.name, p.url, {}); }}
+                    style={{ padding: '7px 13px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}>
+                    {p.icon} {p.name} ↗
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {wantTrain && (
+            <div style={{ flex: 1, minWidth: 240, border: '1px solid var(--navy-border)', borderRadius: 12, padding: '16px 20px', background: 'var(--navy-mid)' }}>
+              <div style={{ fontWeight: 600, marginBottom: 10 }}>🚂 Train</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {buildTrainLinks(intent).map(p => (
+                  <button key={p.name} onClick={() => { window.open(p.url, '_blank'); onSaveBooking('train', p.name, p.url, {}); }}
+                    style={{ padding: '7px 13px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}>
+                    {p.icon} {p.name} ↗
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
