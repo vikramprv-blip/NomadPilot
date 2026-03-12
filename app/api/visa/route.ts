@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Travel Buddy AI - visa requirements API
-// Sign up at https://travel-buddy.ai/api to get your key
-const TRAVEL_BUDDY_BASE = 'https://travel-buddy.ai/api/v2';
+// Travel Buddy AI Visa API
+// Docs: https://travel-buddy.ai/api/
+// Auth: Bearer token — sign up at travel-buddy.ai/api
+// Method: POST with JSON body { passport: "DK", destination: "IN" }
+const TRAVEL_BUDDY_BASE = 'https://api.travel-buddy.ai/v2';
 
-// Nationality name → ISO 2-letter country code
+// Nationality adjective → ISO 2-letter country code
 const NATIONALITY_TO_ISO: Record<string, string> = {
   'Afghan': 'AF', 'Albanian': 'AL', 'Algerian': 'DZ', 'American': 'US',
   'Argentine': 'AR', 'Armenian': 'AM', 'Australian': 'AU', 'Austrian': 'AT',
@@ -26,96 +28,129 @@ const NATIONALITY_TO_ISO: Record<string, string> = {
   'Spanish': 'ES', 'Sri Lankan': 'LK', 'Swedish': 'SE', 'Swiss': 'CH',
   'Syrian': 'SY', 'Taiwanese': 'TW', 'Thai': 'TH', 'Turkish': 'TR',
   'Ukrainian': 'UA', 'Venezuelan': 'VE', 'Vietnamese': 'VN',
+  // Also accept raw ISO codes passed directly
+  'DK': 'DK', 'IN': 'IN', 'GB': 'GB', 'US': 'US', 'DE': 'DE',
 };
 
-// IATA city code → ISO 2-letter country code
+// IATA airport code → destination country ISO code
 const IATA_TO_COUNTRY: Record<string, string> = {
-  'DEL': 'IN', 'BOM': 'IN', 'BLR': 'IN', 'MAA': 'IN', 'CCU': 'IN',
+  'DEL': 'IN', 'BOM': 'IN', 'BLR': 'IN', 'MAA': 'IN', 'CCU': 'IN', 'HYD': 'IN',
   'DXB': 'AE', 'AUH': 'AE', 'SHJ': 'AE', 'DOH': 'QA', 'KWI': 'KW',
-  'BAH': 'BH', 'MCT': 'OM', 'RUH': 'SA', 'JED': 'SA',
-  'LHR': 'GB', 'LGW': 'GB', 'MAN': 'GB', 'CDG': 'FR', 'ORY': 'FR',
-  'FRA': 'DE', 'MUC': 'DE', 'TXL': 'DE', 'BER': 'DE',
+  'BAH': 'BH', 'MCT': 'OM', 'RUH': 'SA', 'JED': 'SA', 'MED': 'SA',
+  'LHR': 'GB', 'LGW': 'GB', 'MAN': 'GB', 'STN': 'GB', 'LTN': 'GB',
+  'CDG': 'FR', 'ORY': 'FR', 'FRA': 'DE', 'MUC': 'DE', 'BER': 'DE',
   'AMS': 'NL', 'BRU': 'BE', 'ZRH': 'CH', 'GVA': 'CH',
-  'MAD': 'ES', 'BCN': 'ES', 'FCO': 'IT', 'MXP': 'IT',
+  'MAD': 'ES', 'BCN': 'ES', 'FCO': 'IT', 'MXP': 'IT', 'NAP': 'IT',
   'VIE': 'AT', 'PRG': 'CZ', 'WAW': 'PL', 'BUD': 'HU',
-  'CPH': 'DK', 'ARN': 'SE', 'OSL': 'NO', 'HEL': 'FI',
-  'BLL': 'DK', 'AAL': 'DK', 'AAR': 'DK',
-  'JFK': 'US', 'LAX': 'US', 'ORD': 'US', 'MIA': 'US', 'SFO': 'US',
+  'CPH': 'DK', 'ARN': 'SE', 'OSL': 'NO', 'HEL': 'FI', 'BLL': 'DK', 'AAL': 'DK',
+  'JFK': 'US', 'LAX': 'US', 'ORD': 'US', 'MIA': 'US', 'SFO': 'US', 'BOS': 'US',
   'YYZ': 'CA', 'YVR': 'CA', 'YUL': 'CA',
   'NRT': 'JP', 'HND': 'JP', 'KIX': 'JP',
-  'SIN': 'SG', 'KUL': 'MY', 'BKK': 'TH', 'HKG': 'HK',
+  'SIN': 'SG', 'KUL': 'MY', 'BKK': 'TH', 'HKG': 'HK', 'MNL': 'PH',
   'ICN': 'KR', 'PEK': 'CN', 'PVG': 'CN', 'CAN': 'CN',
-  'SYD': 'AU', 'MEL': 'AU', 'BNE': 'AU',
+  'SYD': 'AU', 'MEL': 'AU', 'BNE': 'AU', 'PER': 'AU',
   'GRU': 'BR', 'EZE': 'AR', 'MEX': 'MX', 'BOG': 'CO',
-  'CAI': 'EG', 'CMN': 'MA', 'NBO': 'KE', 'JNB': 'ZA', 'LOS': 'NG',
-  'ADD': 'ET', 'ACC': 'GH', 'DAR': 'TZ',
+  'CAI': 'EG', 'CMN': 'MA', 'NBO': 'KE', 'JNB': 'ZA', 'LOS': 'NG', 'ACC': 'GH',
   'IST': 'TR', 'SAW': 'TR', 'TLV': 'IL', 'AMM': 'JO', 'BEY': 'LB',
   'KHI': 'PK', 'LHE': 'PK', 'ISB': 'PK', 'DAC': 'BD', 'CMB': 'LK',
-  'KTM': 'NP', 'RGN': 'MM', 'CGK': 'ID', 'MNL': 'PH',
+  'CGK': 'ID', 'DAR': 'TZ', 'ADD': 'ET',
 };
+
+function resolvePassport(raw: string): string {
+  // Already a 2-letter ISO code
+  if (/^[A-Z]{2}$/.test(raw)) return raw;
+  // Nationality adjective lookup
+  const found = NATIONALITY_TO_ISO[raw];
+  if (found) return found;
+  // Try case-insensitive
+  const key = Object.keys(NATIONALITY_TO_ISO).find(
+    k => k.toLowerCase() === raw.toLowerCase()
+  );
+  return key ? NATIONALITY_TO_ISO[key] : raw.toUpperCase().slice(0, 2);
+}
+
+function resolveDestination(raw: string): string {
+  const upper = raw.toUpperCase();
+  // IATA airport code
+  if (IATA_TO_COUNTRY[upper]) return IATA_TO_COUNTRY[upper];
+  // Already ISO country code
+  if (/^[A-Z]{2}$/.test(upper)) return upper;
+  // Nationality adjective
+  if (NATIONALITY_TO_ISO[raw]) return NATIONALITY_TO_ISO[raw];
+  // City name → try partial match in IATA map
+  const iataMatch = Object.keys(IATA_TO_COUNTRY).find(k => k === upper);
+  if (iataMatch) return IATA_TO_COUNTRY[iataMatch];
+  return upper.slice(0, 2);
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const nationality  = searchParams.get('nationality') || '';  // e.g. "Danish"
-  const destination  = searchParams.get('destination') || '';  // e.g. "DEL" or "India"
-  const apiKey       = process.env.TRAVEL_BUDDY_API_KEY;
+  const nationalityRaw  = searchParams.get('nationality') || '';
+  const destinationRaw  = searchParams.get('destination') || '';
+  const apiKey          = process.env.TRAVEL_BUDDY_API_KEY;
 
-  if (!nationality || !destination) {
-    return NextResponse.json({ error: 'nationality and destination required' }, { status: 400 });
+  if (!nationalityRaw || !destinationRaw) {
+    return NextResponse.json({ error: 'nationality and destination are required' }, { status: 400 });
   }
 
-  // Convert nationality name → ISO code
-  const passportCode = NATIONALITY_TO_ISO[nationality] || nationality.toUpperCase().slice(0, 2);
+  const passportCode = resolvePassport(nationalityRaw);
+  const destCode     = resolveDestination(destinationRaw);
 
-  // Convert IATA or city name → country ISO code
-  const destCode = IATA_TO_COUNTRY[destination.toUpperCase()] ||
-                   NATIONALITY_TO_ISO[destination] ||
-                   destination.toUpperCase().slice(0, 2);
-
-  // If no API key configured, return a clear message
+  // No API key — return helpful setup message
   if (!apiKey) {
     return NextResponse.json({
       status: 'api_key_missing',
-      message: 'Add TRAVEL_BUDDY_API_KEY to Vercel environment variables. Sign up free at travel-buddy.ai/api',
+      message: 'Add TRAVEL_BUDDY_API_KEY to Vercel env vars. Get a free key (120 req/month) at https://travel-buddy.ai/api',
       passportCode,
       destCode,
     });
   }
 
   try {
-    const res = await fetch(
-      `${TRAVEL_BUDDY_BASE}/visa/check?passport=${passportCode}&destination=${destCode}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        next: { revalidate: 86400 }, // cache 24 hours — visa rules don't change daily
-      }
-    );
+    // Travel Buddy API v2: POST with JSON body
+    const res = await fetch(`${TRAVEL_BUDDY_BASE}/visa/check`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        passport: passportCode,
+        destination: destCode,
+      }),
+      next: { revalidate: 86400 }, // cache 24 hours
+    });
 
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Travel Buddy API error ${res.status}: ${err}`);
+      const errText = await res.text();
+      throw new Error(`Travel Buddy API ${res.status}: ${errText.slice(0, 200)}`);
     }
 
     const data = await res.json();
 
-    // Normalise response into our standard format
+    // Normalise Travel Buddy v2 response → our standard shape
+    // v2 returns: data.visa_rules.primary, data.visa_rules.secondary, data.data.*
+    const primary   = data?.visa_rules?.primary   || {};
+    const secondary = data?.visa_rules?.secondary || {};
+    const meta      = data?.data                  || {};
+
+    const statusLabel =
+      primary.category_label || data.status || data.visa_category || 'Unknown';
+    const required =
+      primary.visa_required ?? (statusLabel.toLowerCase().includes('required') ? true : false);
+
     return NextResponse.json({
-      required:       data.visa_required ?? true,
-      status:         data.visa_category || data.status || 'unknown',
-      // e.g. "Visa Required", "Visa Free", "eVisa", "Visa on Arrival"
-      stayDuration:   data.stay_duration || data.max_stay || null,
-      // e.g. 90 (days)
-      passportValidity: data.passport_validity || null,
-      evisaAvailable: data.evisa_available ?? false,
-      evisaUrl:       data.evisa_url || data.application_url || null,
-      notes:          data.notes || data.additional_info || null,
+      required,
+      status:           statusLabel,
+      stayDuration:     primary.duration     || secondary.duration     || data.stay_duration || null,
+      passportValidity: meta.passport_validity || data.passport_validity || null,
+      evisaAvailable:   primary.evisa_available   ?? data.evisa_available   ?? false,
+      evisaUrl:         primary.evisa_url         || data.evisa_url         || data.application_url || null,
+      notes:            primary.notes             || data.notes             || null,
       passportCode,
       destCode,
-      source:         'Travel Buddy AI',
-      lastUpdated:    data.last_updated || new Date().toISOString().slice(0, 10),
+      source:           'Travel Buddy AI',
+      lastUpdated:      data.last_updated || new Date().toISOString().slice(0, 10),
     });
 
   } catch (err: any) {
