@@ -1,52 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseIntent, generateTripSummary, getVisaInfo } from '@/lib/openai';
-import { createClient } from '@/lib/supabase/server';
+import { checkGeminiRateLimit } from '@/lib/ratelimit/gemini';
+import { getCached, setCached } from '@/lib/ratelimit/cache';
+
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userInput, userId } = await req.json();
+    const body = await req.json();
+    const { userMessage } = body;
 
-    if (!userInput?.trim()) {
-      return NextResponse.json({ error: 'User input is required' }, { status: 400 });
+    const cached = await getCached('ai-brain', userMessage);
+    if (cached) return NextResponse.json(JSON.parse(cached));
+
+    const limit = await checkGeminiRateLimit();
+    if (!limit.allowed) {
+      return NextResponse.json({ error: limit.reason, retryAfter: (limit as any).retryAfter }, { status: 429 });
     }
 
-    // Parse natural language into structured intent
-    const intent = await parseIntent(userInput);
+    const prompt = `Parse this travel request and extract intent. Return ONLY JSON:
+{
+  "origin": string,
+  "destination": string,
+  "departureDate": string,
+  "returnDate": string | null,
+  "travelers": number,
+  "preferences": {
+    "cabinClass": "economy"|"premium_economy"|"business"|"first",
+    "maxBudget": number | null,
+    "services": string[]
+  },
+  "nationality": string | null,
+  "tripType": "return"|"oneway"|"multicity"
+}
+Travel request: "${userMessage}"`;
 
-    // Generate human-readable summary
-    const summary = await generateTripSummary(intent);
-    intent.raw = summary; // Store the summary as the display text
-
-    // Get visa info if passport provided
-    let visaInfo = null;
-    if (intent.constraints.visaPassport) {
-      visaInfo = await getVisaInfo(intent.constraints.visaPassport, intent.destination);
-    }
-
-    // Persist to Supabase
-    const supabase = createClient();
-    const { data: tripRecord, error } = await supabase
-      .from('trips')
-      .insert({
-        user_id: userId,
-        intent,
-        visa_info: visaInfo,
-        stage: 'processing',
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (error) console.error('Supabase insert error:', error);
-
-    return NextResponse.json({
-      intent,
-      summary,
-      visaInfo,
-      tripId: tripRecord?.id,
+    const res  = await fetch(`${GEMINI_BASE}?key=${process.env.GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 300 },
+      }),
     });
+
+    const data = await res.json();
+    if (data.error) return NextResponse.json({ error: `Gemini error: ${JSON.stringify(data.error)}` }, { status: 500 });
+
+    const raw     = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    const intent  = JSON.parse(cleaned);
+
+    await setCached('ai-brain', userMessage, JSON.stringify(intent));
+    return NextResponse.json(intent);
   } catch (err: any) {
-    console.error('AI Brain error:', err);
-    return NextResponse.json({ error: err.message || 'AI processing failed' }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
