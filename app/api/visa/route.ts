@@ -141,8 +141,9 @@ export async function GET(req: NextRequest) {
     const res = await fetch(RAPIDAPI_URL, {
       method: 'POST',
       headers: {
-        'Content-Type':           'application/json',
-        'X-RapidAPI-Proxy-Secret': apiKey,   // ← confirmed header name from docs
+        'Content-Type':    'application/json',
+        'X-RapidAPI-Key':  apiKey,
+        'X-RapidAPI-Host': 'visa-requirement.p.rapidapi.com',
       },
       body: JSON.stringify({
         passport:    passportCode,
