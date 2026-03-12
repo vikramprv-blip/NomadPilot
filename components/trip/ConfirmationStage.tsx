@@ -107,7 +107,14 @@ function FlightRow({ flight, intent, rank, onBook }: {
   onBook: (partner: string, url: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const links = buildFlightLinks(flight, intent);
+  const links = buildFlightPartnerLinks({
+    origin:      flight.origin,
+    destination: flight.destination,
+    departure:   intent.departureDate || '',
+    returnDate:  intent.returnDate,
+    passengers:  intent.travelers || 1,
+    cabin:       intent.preferences?.cabinClass || 'economy',
+  });
 
   return (
     <div style={{ border: '1px solid var(--navy-border)', borderRadius: 12, background: rank === 0 ? 'rgba(232,160,32,0.05)' : 'var(--navy-mid)', overflow: 'hidden', transition: 'box-shadow 0.2s' }}>
@@ -180,12 +187,14 @@ function FlightRow({ flight, intent, rank, onBook }: {
             {links.map(p => (
               <button
                 key={p.name}
-                onClick={() => { window.open(p.url, '_blank'); onBook(p.name, p.url); }}
+                onClick={async () => { const url = await resolveAffiliateUrl(p.url, `flight-${flight.origin}-${flight.destination}`); window.open(url, '_blank'); onBook(p.name, url); }}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 7, background: 'var(--navy-light)', border: `1.5px solid ${p.color}50`, color: 'var(--text)', fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'DM Sans' }}
                 onMouseEnter={e => { e.currentTarget.style.background = `${p.color}18`; e.currentTarget.style.color = p.color; e.currentTarget.style.borderColor = p.color; }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'var(--navy-light)'; e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = `${p.color}50`; }}
               >
-                <span style={{ color: p.color }}>{p.icon}</span> {p.name} <span style={{ fontSize: 10, opacity: 0.4 }}>↗</span>
+                <span style={{ color: p.color }}>{p.icon}</span> {p.name}
+                {p.tracked && <span style={{ fontSize: 9, background: 'rgba(45,212,160,0.15)', color: 'var(--green)', borderRadius: 3, padding: '1px 4px', fontWeight: 700 }}>✓ tracked</span>}
+                <span style={{ fontSize: 10, opacity: 0.4 }}>↗</span>
               </button>
             ))}
           </div>
@@ -204,7 +213,12 @@ function HotelSection({ hotels, intent, onBook }: {
   intent: TripIntent;
   onBook: (type: string, partner: string, url: string, details: object) => void;
 }) {
-  const links = buildHotelLinks(intent);
+  const links = buildHotelPartnerLinks({
+    destination: intent.destination || '',
+    checkIn:     intent.departureDate || '',
+    checkOut:    intent.returnDate || '',
+    passengers:  intent.travelers || 1,
+  });
   return (
     <div style={{ marginTop: 32 }}>
       <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -412,7 +426,7 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
             <div style={{ flex: 1, minWidth: 240, border: '1px solid var(--navy-border)', borderRadius: 12, padding: '16px 20px', background: 'var(--navy-mid)' }}>
               <div style={{ fontWeight: 600, marginBottom: 10 }}>🚗 Car Rental</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {buildCarLinks(intent).map(p => (
+                {buildCarPartnerLinks({ destination: intent.destination || '', pickUp: intent.departureDate || '' }).map(p => (
                   <button key={p.name} onClick={() => { window.open(p.url, '_blank'); onSaveBooking('car', p.name, p.url, {}); }}
                     style={{ padding: '7px 13px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}>
                     {p.icon} {p.name} ↗
@@ -425,7 +439,7 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
             <div style={{ flex: 1, minWidth: 240, border: '1px solid var(--navy-border)', borderRadius: 12, padding: '16px 20px', background: 'var(--navy-mid)' }}>
               <div style={{ fontWeight: 600, marginBottom: 10 }}>🚂 Train</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {buildTrainLinks(intent).map(p => (
+                {buildTrainPartnerLinks({ origin: intent.origin || '', destination: intent.destination || '', date: intent.departureDate || '' }).map(p => (
                   <button key={p.name} onClick={() => { window.open(p.url, '_blank'); onSaveBooking('train', p.name, p.url, {}); }}
                     style={{ padding: '7px 13px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}>
                     {p.icon} {p.name} ↗
