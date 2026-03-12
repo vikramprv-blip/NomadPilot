@@ -43,7 +43,7 @@ export default function AdminPage() {
   const [data, setData]       = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
-  const [tab, setTab]         = useState<'overview'|'users'|'subscriptions'>('overview');
+  const [tab, setTab]         = useState<'overview'|'users'|'subscriptions'|'beta'>('overview');
   const [tabData, setTabData] = useState<any>(null);
   const [tabLoading, setTabLoading] = useState(false);
 
@@ -56,7 +56,7 @@ export default function AdminPage() {
       .finally(() => setLoading(false));
   }, [authLoading]);
 
-  const loadTab = async (t: 'users'|'subscriptions') => {
+  const loadTab = async (t: 'users'|'subscriptions'|'beta') => {
     setTab(t); setTabLoading(true);
     try {
       const res = await fetch(`/api/admin?type=${t}`);
@@ -130,7 +130,7 @@ export default function AdminPage() {
 
             {/* Tab nav */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              {(['overview','users','subscriptions'] as const).map(t => (
+              {(['overview','users','subscriptions','beta'] as const).map(t => (
                 <button key={t} onClick={() => t === 'overview' ? setTab('overview') : loadTab(t as any)} style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${tab === t ? 'var(--gold)' : 'var(--navy-border)'}`, background: tab === t ? 'rgba(232,160,32,0.12)' : 'var(--navy-light)', color: tab === t ? 'var(--gold)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'DM Sans', textTransform: 'capitalize', transition: 'all 0.15s' }}>
                   {t}
                 </button>
@@ -180,6 +180,122 @@ export default function AdminPage() {
             )}
 
             {/* Subscriptions table */}
+            {tab === 'beta' && (
+              tabLoading ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-dim)' }}><span className="spin" style={{ fontSize: 24 }}>◌</span></div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {/* Summary cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                  {[
+                    { label: 'Total Signups',  value: tabData?.summary?.total    || 0, color: 'var(--gold)'  },
+                    { label: 'Waitlist',       value: tabData?.summary?.waitlist  || 0, color: '#3b82f6'     },
+                    { label: 'Invited',        value: tabData?.summary?.invited   || 0, color: '#8b5cf6'     },
+                    { label: 'Active Testers', value: tabData?.summary?.active    || 0, color: 'var(--green)'},
+                  ].map(s => <StatCard key={s.label} label={s.label} value={s.value} color={s.color} />)}
+                </div>
+
+                {/* Daily signups sparkline */}
+                {tabData?.dailySignups?.length > 0 && (
+                  <div className="card" style={{ padding: 20 }}>
+                    <h4 style={{ fontWeight: 700, marginBottom: 16, fontSize: 14 }}>Daily Signups</h4>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 60 }}>
+                      {tabData.dailySignups.slice(-30).map((d: any) => {
+                        const max = Math.max(...tabData.dailySignups.map((x: any) => x.count), 1);
+                        return (
+                          <div key={d.date} title={`${d.date}: ${d.count}`}
+                            style={{ flex: 1, background: 'linear-gradient(180deg, var(--gold), var(--gold-dark))', borderRadius: '2px 2px 0 0', height: `${Math.max(4, (d.count / max) * 60)}px`, minWidth: 4, cursor: 'pointer', opacity: 0.85 }} />
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                      <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tabData.dailySignups[0]?.date}</span>
+                      <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{tabData.dailySignups[tabData.dailySignups.length-1]?.date}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Country + source breakdown */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div className="card" style={{ padding: 20 }}>
+                    <h4 style={{ fontWeight: 700, marginBottom: 16, fontSize: 14 }}>🌍 By Country</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {(tabData?.byCountry || []).slice(0, 8).map(([country, count]: [string, number]) => {
+                        const max = tabData.byCountry[0]?.[1] || 1;
+                        return (
+                          <div key={country}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                              <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{country}</span>
+                              <span style={{ fontSize: 12, fontWeight: 700 }}>{count}</span>
+                            </div>
+                            <div style={{ height: 5, background: 'var(--navy-border)', borderRadius: 3 }}>
+                              <div style={{ width: `${(count/max)*100}%`, height: '100%', background: 'var(--gold)', borderRadius: 3 }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="card" style={{ padding: 20 }}>
+                    <h4 style={{ fontWeight: 700, marginBottom: 16, fontSize: 14 }}>📣 How They Found Us</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {(tabData?.bySource || []).slice(0, 8).map(([src, count]: [string, number]) => {
+                        const max = tabData.bySource[0]?.[1] || 1;
+                        return (
+                          <div key={src}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                              <span style={{ fontSize: 12, color: 'var(--text-dim)', textTransform: 'capitalize' }}>{src || 'unknown'}</span>
+                              <span style={{ fontSize: 12, fontWeight: 700 }}>{count}</span>
+                            </div>
+                            <div style={{ height: 5, background: 'var(--navy-border)', borderRadius: 3 }}>
+                              <div style={{ width: `${(count/max)*100}%`, height: '100%', background: '#8b5cf6', borderRadius: 3 }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent signups table */}
+                <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                  <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--navy-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ fontWeight: 700, fontSize: 14 }}>Recent Signups</h4>
+                    <a href="/beta" target="_blank" style={{ fontSize: 12, color: 'var(--gold)', textDecoration: 'none' }}>View signup page ↗</a>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', background: 'var(--navy)', padding: '10px 20px', borderBottom: '1px solid var(--navy-border)' }}>
+                    {['Email','Name','Country','Status','Searches'].map(h => <span key={h} style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{h}</span>)}
+                  </div>
+                  {(tabData?.recentSignups || []).map((t: any, i: number) => (
+                    <div key={t.email} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', padding: '11px 20px', borderBottom: '1px solid var(--navy-border)', background: i % 2 ? 'rgba(255,255,255,0.01)' : 'transparent', fontSize: 13 }}>
+                      <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>{t.email}</span>
+                      <span>{t.name || '—'}</span>
+                      <span style={{ color: 'var(--text-dim)' }}>{t.country || '—'}</span>
+                      <span className={`badge ${t.status === 'active' ? 'badge-green' : t.status === 'invited' ? 'badge-gold' : 'badge-navy'}`} style={{ width: 'fit-content', fontSize: 10 }}>{t.status}</span>
+                      <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{t.search_count || 0}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Recent activity feed */}
+                {tabData?.recentActivity?.length > 0 && (
+                  <div className="card" style={{ padding: 20 }}>
+                    <h4 style={{ fontWeight: 700, marginBottom: 16, fontSize: 14 }}>⚡ Activity Feed</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto' }}>
+                      {tabData.recentActivity.map((e: any, i: number) => (
+                        <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--navy-border)', fontSize: 13 }}>
+                          <span style={{ fontSize: 16 }}>
+                            {e.event === 'signup' ? '✍️' : e.event === 'search' ? '🔍' : e.event === 'partner_click' ? '🔗' : e.event === 'booking_saved' ? '💾' : '⚡'}
+                          </span>
+                          <span style={{ color: 'var(--text-dim)', fontSize: 12, flex: 1 }}>{e.email}</span>
+                          <span className="badge badge-navy" style={{ fontSize: 10 }}>{e.event}</span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{new Date(e.created_at).toLocaleDateString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
             {tab === 'subscriptions' && (
               tabLoading ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-dim)' }}><span className="spin" style={{ fontSize: 24 }}>◌</span></div> :
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
