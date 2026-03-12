@@ -14,13 +14,15 @@ function safeIntent(raw: any): TripIntent {
     returnDate:    raw?.returnDate    || raw?.return || '',
     travelers:     Number(raw?.travelers) || 1,
     budget:        raw?.preferences?.maxBudget || raw?.budget || undefined,
+    nationality:   raw?.nationality   || undefined,
+    tripType:      raw?.tripType      || 'return',
     preferences: {
       cabinClass: raw?.preferences?.cabinClass || 'economy',
     },
     constraints: {
       visaPassport: raw?.nationality || undefined,
     },
-  };
+  } as TripIntent & { nationality?: string; tripType?: string };
 }
 
 export function useAppState() {
@@ -48,7 +50,7 @@ export function useAppState() {
 
       const intent = safeIntent(data.intent || data);
 
-      if (!intent.origin && !intent.destination) {
+      if (!intent.origin && !intent.destination && !intent.raw) {
         throw new Error('Could not understand your travel request. Try: "Fly from Dubai to London next Friday, 2 people"');
       }
 
