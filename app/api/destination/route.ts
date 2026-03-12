@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkGeminiRateLimit } from '@/lib/ratelimit/gemini';
 import { getCached, setCached } from '@/lib/ratelimit/cache';
+import { safeParseGeminiJSON } from '@/lib/ratelimit/parseJSON';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
@@ -18,54 +19,55 @@ async function askGemini(prompt: string): Promise<string> {
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
-function cleanJSON(raw: string): any {
-  return JSON.parse(raw.replace(/```json|```/g, '').trim());
-}
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const destination = searchParams.get('destination') || '';
   const type        = searchParams.get('type') || 'all';
   const cacheKey    = `${destination}:${type}`;
 
-  // Check cache
   const cached = await getCached(type === 'flightTracker' ? 'chat' : type, cacheKey);
   if (cached) {
-    try { return NextResponse.json(JSON.parse(cached)); } catch {}
+    const parsed = safeParseGeminiJSON(cached, null);
+    if (parsed) return NextResponse.json(parsed);
   }
 
-  // Check rate limit
   const limit = await checkGeminiRateLimit();
   if (!limit.allowed) {
     return NextResponse.json({ error: limit.reason, retryAfter: (limit as any).retryAfter }, { status: 429 });
   }
 
   try {
-    let result: any;
+    let raw = '';
+    let fallback: any = {};
 
     if (type === 'embassy') {
-      const raw = await askGemini(`Embassy and consular info for travelers visiting ${destination}. Return ONLY JSON:
-{"embassies":[{"country":string,"address":string,"phone":string,"email":string,"hours":string,"emergency":string}],"localEmergency":{"police":string,"ambulance":string,"fire":string},"notes":string}`);
-      result = cleanJSON(raw);
+      raw = await askGemini(`Embassy info for travelers to ${destination}. Return ONLY valid JSON, double-quoted keys:
+{"embassies":[{"country":"string","address":"string","phone":"string","email":"string","hours":"string","emergency":"string"}],"localEmergency":{"police":"string","ambulance":"string","fire":"string"},"notes":"string"}`);
+      fallback = { embassies: [], localEmergency: { police: '999', ambulance: '999', fire: '999' }, notes: '' };
+
     } else if (type === 'safety') {
-      const raw = await askGemini(`Current travel safety information for ${destination}. Return ONLY JSON:
-{"overallLevel":"low"|"medium"|"high"|"critical","alerts":[{"type":string,"severity":"low"|"medium"|"high","title":string,"description":string,"date":string}],"healthAdvice":string,"crimeAdvice":string,"transportAdvice":string,"lastUpdated":string}`);
-      result = cleanJSON(raw);
+      raw = await askGemini(`Travel safety for ${destination}. Return ONLY valid JSON, double-quoted keys:
+{"overallLevel":"low","alerts":[{"type":"string","severity":"low","title":"string","description":"string","date":"string"}],"healthAdvice":"string","crimeAdvice":"string","transportAdvice":"string","lastUpdated":"string"}`);
+      fallback = { overallLevel: 'low', alerts: [], healthAdvice: '', crimeAdvice: '', transportAdvice: '', lastUpdated: '' };
+
     } else if (type === 'restaurants') {
-      const raw = await askGemini(`Top restaurants and food in ${destination}. Return ONLY JSON:
-{"mustEat":[{"name":string,"cuisine":string,"priceRange":"$"|"$$"|"$$$"|"$$$$","description":string,"area":string,"tip":string}],"foodAreas":[{"name":string,"description":string}],"localDishes":[{"name":string,"description":string}]}`);
-      result = cleanJSON(raw);
+      raw = await askGemini(`Top restaurants in ${destination}. Return ONLY valid JSON, double-quoted keys:
+{"mustEat":[{"name":"string","cuisine":"string","priceRange":"$$","description":"string","area":"string","tip":"string"}],"foodAreas":[{"name":"string","description":"string"}],"localDishes":[{"name":"string","description":"string"}]}`);
+      fallback = { mustEat: [], foodAreas: [], localDishes: [] };
+
     } else if (type === 'flightTracker') {
       const flight = searchParams.get('flight') || '';
-      const raw = await askGemini(`Flight info for ${flight}. Return ONLY JSON:
-{"flightNumber":string,"airline":string,"status":"on_time"|"delayed"|"cancelled"|"landed"|"unknown","departure":{"airport":string,"scheduled":string,"actual":string},"arrival":{"airport":string,"scheduled":string,"estimated":string},"gate":string,"terminal":string,"note":string}`);
-      result = cleanJSON(raw);
+      raw = await askGemini(`Flight status for ${flight}. Return ONLY valid JSON, double-quoted keys:
+{"flightNumber":"string","airline":"string","status":"unknown","departure":{"airport":"string","scheduled":"string","actual":"string"},"arrival":{"airport":"string","scheduled":"string","estimated":"string"},"gate":"string","terminal":"string","note":"Real-time data unavailable, please check airline website"}`);
+      fallback = { flightNumber: flight, airline: '', status: 'unknown', departure: {}, arrival: {}, note: 'Check airline website for live status' };
+
     } else {
-      const raw = await askGemini(`Travel overview for ${destination}. Return ONLY JSON:
-{"overview":string,"bestTime":string,"currency":string,"language":string,"timezone":string,"climate":string,"gettingAround":string,"topAttractions":[{"name":string,"description":string}],"practicalTips":[string]}`);
-      result = cleanJSON(raw);
+      raw = await askGemini(`Travel overview for ${destination}. Return ONLY valid JSON, double-quoted keys:
+{"overview":"string","bestTime":"string","currency":"string","language":"string","timezone":"string","climate":"string","gettingAround":"string","topAttractions":[{"name":"string","description":"string"}],"practicalTips":["string"]}`);
+      fallback = { overview: '', bestTime: '', currency: '', language: '', timezone: '', topAttractions: [], practicalTips: [] };
     }
 
+    const result = safeParseGeminiJSON(raw, fallback);
     await setCached(type, cacheKey, JSON.stringify(result));
     return NextResponse.json(result);
   } catch (err: any) {
