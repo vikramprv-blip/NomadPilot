@@ -51,7 +51,7 @@ export function useAppState() {
       const intent = safeIntent(data.intent || data);
 
       if (!intent.origin && !intent.destination && !intent.raw) {
-        throw new Error('Could not understand your travel request. Try: "Fly from Dubai to London next Friday, 2 people"');
+throw new Error('Please enter both origin and destination.');
       }
 
       const tripId = data.tripId || `trip_${Date.now()}`;
