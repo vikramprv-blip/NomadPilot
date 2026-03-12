@@ -6,18 +6,18 @@ import { nanoid } from 'nanoid';
 
 function scoreItinerary(
   flights: FlightOption[],
-  hotel: HotelOption,
+  hotel: HotelOption | null,
   intent: TripIntent
 ): { score: any; totalCost: number } {
   const flight = flights[0];
-  const totalCost = flight.price + hotel.totalPrice;
+  const totalCost = flight.price + (hotel?.totalPrice || 0);
   const budget = intent.budget || 9999999;
 
-  const priceScore = Math.max(0, 100 - (totalCost / budget) * 100);
-  const timeScore = flight.stops === 0 ? 100 : flight.stops === 1 ? 70 : 40;
-  const convenienceScore = hotel.rating * 20;
-  const loyaltyScore = (flight.loyaltyMiles || 0) > 1000 ? 80 : 50;
-  const esgScore = intent.preferences.esgPreference
+  const priceScore       = Math.max(0, 100 - (totalCost / budget) * 100);
+  const timeScore        = flight.stops === 0 ? 100 : flight.stops === 1 ? 70 : 40;
+  const convenienceScore = hotel ? hotel.rating * 20 : 60;
+  const loyaltyScore     = (flight.loyaltyMiles || 0) > 1000 ? 80 : 50;
+  const esgScore         = intent.preferences?.esgPreference
     ? Math.max(0, 100 - (flight.co2kg || 200) / 5)
     : 50;
 
@@ -25,12 +25,12 @@ function scoreItinerary(
 
   return {
     score: {
-      overall: Math.round(overall),
-      price: Math.round(priceScore),
-      time: Math.round(timeScore),
-      convenience: Math.round(convenienceScore),
-      loyalty: Math.round(loyaltyScore),
-      esg: Math.round(esgScore),
+      overall:      Math.round(overall),
+      price:        Math.round(priceScore),
+      time:         Math.round(timeScore),
+      convenience:  Math.round(convenienceScore),
+      loyalty:      Math.round(loyaltyScore),
+      esg:          Math.round(esgScore),
     },
     totalCost,
   };
@@ -40,10 +40,15 @@ export async function POST(req: NextRequest) {
   try {
     const { intent, tripId } = await req.json() as { intent: TripIntent; tripId?: string };
 
-    // Parallel search: flights + hotels
+    const services = (intent.services && intent.services.length > 0)
+      ? intent.services
+      : ['flight', 'hotel'];
+    const needsHotel  = services.includes('hotel');
+
+    // Parallel search — only fetch hotels if requested
     const [flights, hotels] = await Promise.all([
       searchFlights(intent),
-      searchHotels(intent),
+      needsHotel ? searchHotels(intent) : Promise.resolve([]),
     ]);
 
     if (!flights.length) {
@@ -52,14 +57,15 @@ export async function POST(req: NextRequest) {
 
     // Build up to 3 itinerary options
     const itineraries: Itinerary[] = [];
-    const hotelOptions = hotels.slice(0, 3);
+    const hotelOptions  = hotels.slice(0, 3);
     const flightOptions = flights.slice(0, 3);
 
     for (let i = 0; i < Math.min(3, flightOptions.length); i++) {
       const selectedFlight = flightOptions[i];
-      const selectedHotel = hotelOptions[i] || hotelOptions[0];
+      const selectedHotel  = needsHotel ? (hotelOptions[i] || hotelOptions[0] || null) : null;
 
-      if (!selectedHotel) continue;
+      // Skip only if hotel was requested but none available
+      if (needsHotel && !selectedHotel) continue;
 
       const { score, totalCost } = scoreItinerary([selectedFlight], selectedHotel, intent);
 
@@ -67,12 +73,14 @@ export async function POST(req: NextRequest) {
         id: nanoid(),
         score,
         flights: [selectedFlight],
-        hotels: [selectedHotel],
+        hotels: selectedHotel ? [selectedHotel] : [],
         ground: [],
         totalCost,
         currency: selectedFlight.currency,
         visaRequired: false,
-        summary: `Option ${i + 1}: ${selectedFlight.airline} flight + ${selectedHotel.name}`,
+        summary: selectedHotel
+          ? `Option ${i + 1}: ${selectedFlight.airline} flight + ${selectedHotel.name}`
+          : `Option ${i + 1}: ${selectedFlight.airline} flight`,
       });
     }
 

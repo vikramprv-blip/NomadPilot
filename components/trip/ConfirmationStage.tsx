@@ -82,7 +82,7 @@ function ItineraryCard({ it, index, intent, onSaveBooking }: {
 }) {
   const flight  = it.flights[0];
   const hotel   = it.hotels[0];
-  const services = intent.services || ['flight', 'hotel'];
+  const services = (intent.services && intent.services.length > 0) ? intent.services : ['flight', 'hotel', 'car', 'train'];
   const wantFlight = services.includes('flight');
   const wantHotel  = services.includes('hotel');
   const wantCar    = services.includes('car');
@@ -240,6 +240,11 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
 }) {
   const nationality = intent.constraints?.visaPassport || (intent as any).nationality || '';
 
+  // Debug in browser console
+  if (typeof window !== 'undefined') {
+    console.log('[ConfirmationStage] itineraries:', itineraries?.length, 'services:', intent.services);
+  }
+
   return (
     <div className="fade-up" style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ marginBottom: 28 }}>
@@ -249,7 +254,6 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
           {intent.departureDate && ` · ${new Date(intent.departureDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
           {intent.returnDate && ` → ${new Date(intent.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
         </p>
-        {/* Only show visa banner if we have a nationality that is NOT an IATA code */}
         {nationality && !/^[A-Z]{3}$/.test(nationality.toUpperCase()) && (
           <VisaChecker
             nationality={nationality}
@@ -258,12 +262,25 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
           />
         )}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
-        {itineraries.map((it, i) => (
-          <ItineraryCard key={it.id} it={it} index={i} intent={intent} onSaveBooking={onSaveBooking} />
-        ))}
-      </div>
+
+      {(!itineraries || itineraries.length === 0) ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-dim)' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>✈</div>
+          <h3 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8, color: 'var(--text)' }}>No results found</h3>
+          <p style={{ fontSize: 14, marginBottom: 16 }}>
+            No flights found for {(intent.origin || '').toUpperCase()} → {(intent.destination || '').toUpperCase()} on {intent.departureDate}.
+          </p>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Try different dates, or note that the Amadeus test environment has limited routes.
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
+          {itineraries.map((it, i) => (
+            <ItineraryCard key={it.id} it={it} index={i} intent={intent} onSaveBooking={onSaveBooking} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
-
