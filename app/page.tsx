@@ -15,6 +15,7 @@ import MyTripsTab from '@/components/mytrips/MyTripsTab';
 import DestinationTab from '@/components/destination/DestinationTab';
 import AccountTab from '@/components/account/AccountTab';
 import AuthModal from '@/components/auth/AuthModal';
+import ChatBot from '@/components/chat/ChatBot';
 
 type Tab = 'search' | 'mytrips' | 'destination' | 'account';
 
@@ -23,18 +24,17 @@ export default function HomePage() {
   const { user, loading: authLoading, signOut } = useAuth();
   const { permission, supported, requestPermission, notify } = usePushNotifications(user?.id);
 
-  const [tab, setTab]               = useState<Tab>('search');
+  const [tab, setTab]                 = useState<Tab>('search');
   const [nationality, setNationality] = useState('');
-  const [showVisa, setShowVisa]     = useState(false);
-  const [showAuth, setShowAuth]     = useState(false);
-  const [tripCount, setTripCount]   = useState(0);
+  const [showVisa, setShowVisa]       = useState(false);
+  const [showAuth, setShowAuth]       = useState(false);
+  const [tripCount, setTripCount]     = useState(0);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [notifBanner, setNotifBanner]   = useState(true);
 
-  // Save booking to localStorage + notify user
   const handleSaveBooking = useCallback((type: string, partner: string, url: string, details: object) => {
-    const stored = localStorage.getItem('nomadpilot_trips');
-    const trips  = stored ? JSON.parse(stored) : [];
+    const stored  = localStorage.getItem('nomadpilot_trips');
+    const trips   = stored ? JSON.parse(stored) : [];
     const newTrip = {
       id: Math.random().toString(36).slice(2),
       type, partner_name: partner, partner_url: url,
@@ -45,13 +45,7 @@ export default function HomePage() {
     const updated = [newTrip, ...trips];
     localStorage.setItem('nomadpilot_trips', JSON.stringify(updated));
     setTripCount(updated.length);
-
-    // Push notification
-    notify(`${type === 'flight' ? '✈ Flight' : type === 'hotel' ? '🏨 Hotel' : type === 'car' ? '🚗 Car' : '🚂 Train'} saved to My Trips`, `Booked via ${partner}`, '/');
-
-    // Flash badge
-    const el = document.getElementById('mytrips-badge');
-    if (el) { el.style.transform = 'scale(1.5)'; setTimeout(() => { el.style.transform = 'scale(1)'; }, 350); }
+    notify(`${type === 'flight' ? '✈ Flight' : type === 'hotel' ? '🏨 Hotel' : type === 'car' ? '🚗 Car' : '🚂 Train'} saved to My Trips`, `Booked via ${partner}`);
   }, [user, notify]);
 
   const handleSearchSubmit = (data: object) => {
@@ -62,19 +56,18 @@ export default function HomePage() {
     processInput(text);
   };
 
-  const inSearch    = tab === 'search';
+  const inSearch     = tab === 'search';
   const showProgress = inSearch && state.stage !== 'input';
+  const chatContext  = user ? { name: user.user_metadata?.full_name || user.email, email: user.email, plan: user.user_metadata?.plan || 'free', tripCount } : undefined;
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--navy)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 80% 45% at 50% -5%, rgba(232,160,32,0.07), transparent)' }} />
 
-      {/* Auth modal */}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} onSuccess={() => setShowAuth(false)} />}
 
-      {/* Push notification banner */}
       {supported && permission === 'default' && notifBanner && (
-        <div style={{ background: 'rgba(232,160,32,0.1)', borderBottom: '1px solid rgba(232,160,32,0.2)', padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
+        <div style={{ background: 'rgba(232,160,32,0.1)', borderBottom: '1px solid rgba(232,160,32,0.2)', padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, zIndex: 50 }}>
           <span style={{ color: 'var(--text-dim)' }}>🔔 Enable push notifications for flight delays & safety alerts</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={requestPermission} className="btn btn-gold" style={{ fontSize: 12, padding: '5px 14px' }}>Enable</button>
@@ -83,7 +76,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Header */}
       <header style={{ borderBottom: '1px solid var(--navy-border)', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(10,22,40,0.92)', backdropFilter: 'blur(16px)', position: 'sticky', top: 0, zIndex: 100, height: 58, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flexShrink: 0 }} onClick={() => { reset(); setTab('search'); }}>
           <img src="/NP_Logo.jpg" alt="NomadPilot" style={{ width: 32, height: 32, borderRadius: 7, objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -101,8 +93,6 @@ export default function HomePage() {
           {inSearch && state.stage !== 'input' && (
             <button className="btn btn-navy" onClick={reset} style={{ fontSize: 12, padding: '6px 12px' }}>← New</button>
           )}
-
-          {/* Auth button / user menu */}
           {!authLoading && (
             user ? (
               <div style={{ position: 'relative' }}>
@@ -134,55 +124,40 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Tab nav */}
       <TabNav active={tab} onChange={t => { setTab(t); if (t !== 'search') reset(); }} tripCount={tripCount} />
 
-      {/* Error */}
       {error && tab === 'search' && (
         <div style={{ background: 'rgba(232,85,85,0.1)', padding: '10px 24px', color: 'var(--red)', fontSize: 13 }}>⚠ {error}</div>
       )}
 
-      {/* Click outside to close user menu */}
       {showUserMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 150 }} onClick={() => setShowUserMenu(false)} />}
 
-      {/* Main */}
       <main style={{ position: 'relative', zIndex: 1, flex: 1, padding: '40px 24px', maxWidth: 1100, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-
         {tab === 'search' && (
           <>
             {state.stage === 'input' && (
               <>
                 <InputStage onSubmit={handleSearchSubmit} onAISubmit={processInput} loading={loading} />
-                {showVisa && (
-                  <div style={{ maxWidth: 880, margin: '28px auto 0' }}>
-                    <VisaCalendar nationality={nationality} />
-                  </div>
-                )}
+                {showVisa && <div style={{ maxWidth: 880, margin: '28px auto 0' }}><VisaCalendar nationality={nationality} /></div>}
               </>
             )}
             {(state.stage === 'processing' || state.stage === 'generation' || state.stage === 'optimization') && <ProcessingStage currentStage={state.stage} />}
             {state.stage === 'confirmation' && state.itineraries && state.intent && (
               <ConfirmationStage itineraries={state.itineraries} intent={state.intent} onSaveBooking={handleSaveBooking} />
             )}
-            {state.stage === 'booking' && state.selectedItinerary && (
-              <BookingStage itinerary={state.selectedItinerary} onBook={bookTrip} loading={loading} />
-            )}
-            {state.stage === 'ops' && state.booking && state.selectedItinerary && (
-              <OpsStage booking={state.booking} itinerary={state.selectedItinerary} tripId={state.tripId} onContinue={() => setStage('organizer')} />
-            )}
-            {state.stage === 'organizer' && state.selectedItinerary && state.booking && (
-              <OrganizerStage itinerary={state.selectedItinerary} booking={state.booking} onContinue={() => setStage('post_trip')} />
-            )}
-            {state.stage === 'post_trip' && state.selectedItinerary && (
-              <PostTripStage itinerary={state.selectedItinerary} onReset={reset} />
-            )}
+            {state.stage === 'booking'    && state.selectedItinerary && <BookingStage itinerary={state.selectedItinerary} onBook={bookTrip} loading={loading} />}
+            {state.stage === 'ops'        && state.booking && state.selectedItinerary && <OpsStage booking={state.booking} itinerary={state.selectedItinerary} tripId={state.tripId} onContinue={() => setStage('organizer')} />}
+            {state.stage === 'organizer'  && state.selectedItinerary && state.booking  && <OrganizerStage itinerary={state.selectedItinerary} booking={state.booking} onContinue={() => setStage('post_trip')} />}
+            {state.stage === 'post_trip'  && state.selectedItinerary && <PostTripStage itinerary={state.selectedItinerary} onReset={reset} />}
           </>
         )}
-
         {tab === 'mytrips'     && <MyTripsTab userId={user?.id} />}
         {tab === 'destination' && <DestinationTab />}
         {tab === 'account'     && <AccountTab currentPlan={user?.user_metadata?.plan || 'free'} />}
       </main>
+
+      {/* Floating AI chatbot — visible on every tab */}
+      <ChatBot user={user} userContext={chatContext} />
     </div>
   );
 }
