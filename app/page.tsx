@@ -51,9 +51,7 @@ export default function HomePage() {
   const handleSearchSubmit = (data: object) => {
     const d = data as any;
     if (d.nationality) setNationality(d.nationality);
-    const leg  = d.legs?.[0] || {};
-    const text = `I want to travel from ${leg.from || 'origin'} to ${leg.to || 'destination'} on ${leg.date || leg.departure || 'soon'}, ${d.travelers || 1} traveler(s), ${d.cabinClass || 'economy'} class. Services: ${(d.services || []).join(', ')}.${d.nationality ? ` Nationality: ${d.nationality}.` : ''}`;
-    processInput(text);
+    processStructuredSearch(d);
   };
 
   const inSearch     = tab === 'search';
