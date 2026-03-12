@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Itinerary, TripIntent, FlightOption, HotelOption } from '@/types';
 import VisaChecker from '@/components/trip/VisaChecker';
+import { resolveAffiliateUrl } from '@/lib/affiliate';
 
 // ─── Pre-filled deep-link builders ───────────────────────────────────────────
 function buildFlightLinks(flight: FlightOption, intent: TripIntent) {
@@ -129,14 +130,7 @@ function FlightRow({ flight, intent, rank, onBook }: {
   onBook: (partner: string, url: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const links = buildFlightPartnerLinks({
-    origin:      flight.origin,
-    destination: flight.destination,
-    departure:   intent.departureDate || '',
-    returnDate:  intent.returnDate,
-    passengers:  intent.travelers || 1,
-    cabin:       intent.preferences?.cabinClass || 'economy',
-  });
+  const links = buildFlightLinks(flight, intent);
 
   return (
     <div style={{ border: '1px solid var(--navy-border)', borderRadius: 12, background: rank === 0 ? 'rgba(232,160,32,0.05)' : 'var(--navy-mid)', overflow: 'hidden', transition: 'box-shadow 0.2s' }}>
@@ -235,12 +229,7 @@ function HotelSection({ hotels, intent, onBook }: {
   intent: TripIntent;
   onBook: (type: string, partner: string, url: string, details: object) => void;
 }) {
-  const links = buildHotelPartnerLinks({
-    destination: intent.destination || '',
-    checkIn:     intent.departureDate || '',
-    checkOut:    intent.returnDate || '',
-    passengers:  intent.travelers || 1,
-  });
+  const links = buildHotelLinks(intent);
   return (
     <div style={{ marginTop: 32 }}>
       <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -448,7 +437,7 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
             <div style={{ flex: 1, minWidth: 240, border: '1px solid var(--navy-border)', borderRadius: 12, padding: '16px 20px', background: 'var(--navy-mid)' }}>
               <div style={{ fontWeight: 600, marginBottom: 10 }}>🚗 Car Rental</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {buildCarPartnerLinks({ destination: intent.destination || '', pickUp: intent.departureDate || '' }).map(p => (
+                {buildCarLinks(intent).map(p => (
                   <button key={p.name} onClick={() => { window.open(p.url, '_blank'); onSaveBooking('car', p.name, p.url, {}); }}
                     style={{ padding: '7px 13px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}>
                     {p.icon} {p.name} ↗
@@ -461,7 +450,7 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
             <div style={{ flex: 1, minWidth: 240, border: '1px solid var(--navy-border)', borderRadius: 12, padding: '16px 20px', background: 'var(--navy-mid)' }}>
               <div style={{ fontWeight: 600, marginBottom: 10 }}>🚂 Train</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {buildTrainPartnerLinks({ origin: intent.origin || '', destination: intent.destination || '', date: intent.departureDate || '' }).map(p => (
+                {buildTrainLinks(intent).map(p => (
                   <button key={p.name} onClick={() => { window.open(p.url, '_blank'); onSaveBooking('train', p.name, p.url, {}); }}
                     style={{ padding: '7px 13px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}>
                     {p.icon} {p.name} ↗
