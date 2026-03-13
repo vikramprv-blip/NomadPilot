@@ -29,10 +29,10 @@ function buildFlightLinks(flight: FlightOption, intent: TripIntent) {
   const gfSimple = `https://www.google.com/travel/flights?q=flights+from+${o}+to+${d}+on+${dep}`;
 
   return [
-    { name: 'Skyscanner',     color: '#00A698', icon: '✈', url: skyUrl },
-    { name: 'Expedia',        color: '#FFC72C', icon: '✈', url: expUrl },
-    { name: 'MakeMyTrip',     color: '#E8175D', icon: '✈', url: mmtUrl },
-    { name: 'Google Flights', color: '#4285F4', icon: '✈', url: gfSimple },
+    { name: 'Skyscanner',     color: '#00A698', icon: '✈', url: skyUrl,    tracked: false },
+    { name: 'Expedia',        color: '#FFC72C', icon: '✈', url: expUrl,    tracked: false },
+    { name: 'MakeMyTrip',     color: '#E8175D', icon: '✈', url: mmtUrl,    tracked: false },
+    { name: 'Google Flights', color: '#4285F4', icon: '✈', url: gfSimple,  tracked: false },
   ];
 }
 
@@ -42,9 +42,9 @@ function buildHotelLinks(intent: TripIntent) {
   const co  = intent.returnDate    || '';
   const pax = intent.travelers     || 1;
   return [
-    { name: 'Booking.com',    color: '#003580', icon: '🏨', url: `https://www.booking.com/searchresults.html?ss=${d}&checkin=${ci}&checkout=${co}&group_adults=${pax}` },
-    { name: 'Hotels.com',     color: '#D32F2F', icon: '🏨', url: `https://www.hotels.com/search.do?q-destination=${d}&q-check-in=${ci}&q-check-out=${co}&q-room-0-adults=${pax}` },
-    { name: 'Expedia Hotels', color: '#FFC72C', icon: '🏨', url: `https://www.expedia.com/Hotel-Search?destination=${d}&startDate=${ci}&endDate=${co}&adults=${pax}` },
+    { name: 'Booking.com',    color: '#003580', icon: '🏨', url: `https://www.booking.com/searchresults.html?ss=${d}&checkin=${ci}&checkout=${co}&group_adults=${pax}`,  tracked: false },
+    { name: 'Hotels.com',     color: '#D32F2F', icon: '🏨', url: `https://www.hotels.com/search.do?q-destination=${d}&q-check-in=${ci}&q-check-out=${co}&q-room-0-adults=${pax}`, tracked: false },
+    { name: 'Expedia Hotels', color: '#FFC72C', icon: '🏨', url: `https://www.expedia.com/Hotel-Search?destination=${d}&startDate=${ci}&endDate=${co}&adults=${pax}`, tracked: false },
   ];
 }
 
@@ -52,9 +52,9 @@ function buildCarLinks(intent: TripIntent) {
   const d   = encodeURIComponent(intent.destination || '');
   const dep = intent.departureDate || '';
   return [
-    { name: 'Rentalcars.com',  color: '#E87722', icon: '🚗', url: `https://www.rentalcars.com/SearchResults.do?country=${d}&dateFrom=${dep}` },
-    { name: 'Expedia Cars',    color: '#FFC72C', icon: '🚗', url: `https://www.expedia.com/carsearch?locn=${d}&date1=${dep}` },
-    { name: 'Skyscanner Cars', color: '#00A698', icon: '🚗', url: `https://www.skyscanner.com/car-hire/${intent.destination?.toLowerCase() || ''}` },
+    { name: 'Rentalcars.com',  color: '#E87722', icon: '🚗', url: `https://www.rentalcars.com/SearchResults.do?country=${d}&dateFrom=${dep}`,  tracked: false },
+    { name: 'Expedia Cars',    color: '#FFC72C', icon: '🚗', url: `https://www.expedia.com/carsearch?locn=${d}&date1=${dep}`,                   tracked: false },
+    { name: 'Skyscanner Cars', color: '#00A698', icon: '🚗', url: `https://www.skyscanner.com/car-hire/${intent.destination?.toLowerCase() || ''}`, tracked: false },
   ];
 }
 
@@ -62,9 +62,9 @@ function buildTrainLinks(intent: TripIntent) {
   const o = encodeURIComponent(intent.origin || '');
   const d = encodeURIComponent(intent.destination || '');
   return [
-    { name: 'Trainline',   color: '#00C853', icon: '🚂', url: `https://www.thetrainline.com/search/${o}/${d}` },
-    { name: 'Rail Europe', color: '#1565C0', icon: '🚂', url: `https://www.raileurope.com` },
-    { name: 'Omio',        color: '#6200EA', icon: '🚂', url: `https://www.omio.com/trains/${o}/${d}` },
+    { name: 'Trainline',   color: '#00C853', icon: '🚂', url: `https://www.thetrainline.com/search/${o}/${d}`, tracked: false },
+    { name: 'Rail Europe', color: '#1565C0', icon: '🚂', url: `https://www.raileurope.com`,                   tracked: false },
+    { name: 'Omio',        color: '#6200EA', icon: '🚂', url: `https://www.omio.com/trains/${o}/${d}`,        tracked: false },
   ];
 }
 
