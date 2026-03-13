@@ -34,7 +34,7 @@ export default function HomePage() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [notifBanner, setNotifBanner]   = useState(true);
 
-  const handleSaveBooking = useCallback((type: string, partner: string, url: string, details: object) => {
+  const handleSaveBooking = useCallback(async (type: string, partner: string, url: string, details: object) => {
     const stored  = localStorage.getItem('nomadpilot_trips');
     const trips   = stored ? JSON.parse(stored) : [];
     const newTrip = {
@@ -47,7 +47,19 @@ export default function HomePage() {
     const updated = [newTrip, ...trips];
     localStorage.setItem('nomadpilot_trips', JSON.stringify(updated));
     setTripCount(updated.length);
-    notify(`${type === 'flight' ? '✈ Flight' : type === 'hotel' ? '🏨 Hotel' : type === 'car' ? '🚗 Car' : '🚂 Train'} saved to My Trips`, `Booked via ${partner}`);
+    const icon = type === 'flight' ? '✈ Flight' : type === 'hotel' ? '🏨 Hotel' : type === 'car' ? '🚗 Car' : '🚂 Train';
+    notify(`${icon} saved to My Trips`, `Booked via ${partner}`);
+
+    // Also sync to Supabase if logged in
+    if (user?.id) {
+      try {
+        await fetch('/api/save-booking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, type, partnerName: partner, partnerUrl: url, details }),
+        });
+      } catch {}
+    }
   }, [user, notify]);
 
   // Structured search tab — bypass Gemini, parse form directly
@@ -150,7 +162,7 @@ export default function HomePage() {
             )}
             {(state.stage === 'processing' || state.stage === 'generation' || state.stage === 'optimization') && <ProcessingStage currentStage={state.stage} />}
             {state.stage === 'confirmation' && state.itineraries && state.intent && (
-              <ConfirmationStage itineraries={state.itineraries} intent={state.intent} onSaveBooking={handleSaveBooking} />
+              <ConfirmationStage itineraries={state.itineraries} intent={state.intent} onSaveBooking={handleSaveBooking} cars={(state as any).cars || []} />
             )}
             {state.stage === 'booking'   && state.selectedItinerary && <BookingStage itinerary={state.selectedItinerary} onBook={bookTrip} loading={loading} />}
             {state.stage === 'ops'       && state.booking && state.selectedItinerary && <OpsStage booking={state.booking} itinerary={state.selectedItinerary} tripId={state.tripId} onContinue={() => setStage('organizer')} />}
@@ -159,7 +171,7 @@ export default function HomePage() {
           </>
         )}
         {tab === 'mytrips'     && <MyTripsTab userId={user?.id} />}
-        {tab === 'destination' && <DestinationTab />}
+        {tab === 'destination' && <DestinationTab currentDestination={state.intent?.destination || ''} />}
         {tab === 'account'     && <AccountTab currentPlan={user?.user_metadata?.plan || 'free'} />}
         {tab === 'vault'       && <VaultTab user={user} />}
       </main>

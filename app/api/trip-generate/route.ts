@@ -8,8 +8,11 @@ import { nanoid } from 'nanoid';
 
 // Convert Kiwi flight → FlightOption
 function kiwiToFlight(k: KiwiFlight): FlightOption {
+  // Use composite key so same flight number on same route isn't duplicated
+  const depTime = k.departure ? k.departure.slice(0, 16) : k.id;
+  const stableId = `${k.flightNumber}-${k.origin}-${k.destination}-${depTime}`;
   return {
-    id:           k.id,
+    id:           stableId,
     airline:      k.airline,
     flightNumber: k.flightNumber,
     origin:       k.origin,
@@ -24,6 +27,7 @@ function kiwiToFlight(k: KiwiFlight): FlightOption {
     bookingClass: 'Y',
     loyaltyMiles: Math.round(k.price * 5),
     co2kg:        Math.round(k.price * 0.8),
+    bookingUrl:   (k as any).deepLink,
   };
 }
 
@@ -197,6 +201,20 @@ export async function POST(req: NextRequest) {
       } catch (e) { console.error('Amadeus hotel error:', e); }
     }
 
+    // ── Car Rental ────────────────────────────────────────────────────────────
+    const needsCar   = services.includes('car');
+    let   cars: CarResult[] = [];
+    if (needsCar && hasRapidAPI) {
+      try {
+        const carCity     = (intent as any).hotelDestination || intent.destination;
+        const carPickup   = isMultiCity ? (intentLegs[intentLegs.length-1]?.date || intent.departureDate) : intent.departureDate;
+        const carDropoff  = (intent as any).nights
+          ? new Date(new Date(carPickup).getTime() + (intent as any).nights * 86400000).toISOString().slice(0,10)
+          : intent.returnDate || new Date(new Date(carPickup).getTime() + 3*86400000).toISOString().slice(0,10);
+        cars = await searchCarRentals({ destination: carCity, pickupDate: carPickup, dropoffDate: carDropoff, currency: intent.currency || 'USD' });
+      } catch(e) { console.error('Car rental error:', e); }
+    }
+
     // For multi-city, check each leg has results
     if (isMultiCity) {
       const emptyLegs = legFlightResults
@@ -274,7 +292,7 @@ export async function POST(req: NextRequest) {
         .eq('id', tripId);
     }
 
-    return NextResponse.json({ itineraries });
+    return NextResponse.json({ itineraries, cars });
   } catch (err: any) {
     console.error('Trip generation error:', err);
     return NextResponse.json({ error: err.message || 'Trip generation failed' }, { status: 500 });

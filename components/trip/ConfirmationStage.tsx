@@ -228,6 +228,15 @@ function FlightRow({ flight, intent, rank, onBook }: {
             Select a partner to book this flight — your search is pre-filled:
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {/* Direct Kiwi link if available — best price guarantee */}
+            {(flight as any).bookingUrl && (
+              <a href={(flight as any).bookingUrl} target="_blank" rel="noopener noreferrer"
+                onClick={() => onBook('Kiwi.com', (flight as any).bookingUrl)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 7, background: 'linear-gradient(135deg,#E5422B,#c73220)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans', textDecoration: 'none' }}>
+                🌐 Book on Kiwi.com
+                <span style={{ fontSize: 10, background: 'rgba(255,255,255,0.2)', borderRadius: 3, padding: '1px 5px' }}>Live price</span>
+              </a>
+            )}
             {links.map(p => (
               <button
                 key={p.name}
@@ -257,35 +266,102 @@ function HotelSection({ hotels, intent, onBook }: {
   intent: TripIntent;
   onBook: (type: string, partner: string, url: string, details: object) => void;
 }) {
-  const links = buildHotelLinks(intent);
+  const [starFilter, setStarFilter] = useState<number | null>((intent as any).preferences?.hotelStars || null);
+  const [sortH, setSortH]           = useState<'price' | 'stars' | 'rating'>('price');
+  const [showAll, setShowAll]       = useState(false);
+
+  const links       = buildHotelLinks(intent);
+  const hotelCity   = (intent as any).hotelDestination || intent.destination || '';
+  const nights      = (intent as any).nights || null;
+
+  // Filter + sort
+  const filtered = hotels
+    .filter(h => !starFilter || h.stars >= starFilter)
+    .sort((a, b) =>
+      sortH === 'price'  ? a.pricePerNight - b.pricePerNight :
+      sortH === 'stars'  ? b.stars - a.stars :
+      b.rating - a.rating
+    );
+  const displayed = showAll ? filtered : filtered.slice(0, 5);
+
   return (
     <div style={{ marginTop: 32 }}>
-      <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-        🏨 Hotels in {intent.destination}
-      </h3>
-      {hotels.slice(0, 3).map((hotel, i) => (
-        <div key={hotel.id} style={{ border: '1px solid var(--navy-border)', borderRadius: 12, background: 'var(--navy-mid)', padding: '16px 20px', marginBottom: 12, display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 16 }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{hotel.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 3 }}>{'★'.repeat(hotel.stars || 3)} · {hotel.address}</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>{fmtPrice(hotel.pricePerNight, intent.currency || hotel.currency || 'USD')}/night</div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              {links.map(p => (
-                <button key={p.name}
-                  onClick={() => { window.open(p.url, '_blank'); onBook('hotel', p.name, p.url, { hotel: hotel.name, destination: intent.destination }); }}
-                  style={{ padding: '6px 12px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans', transition: 'all 0.15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = `${p.color}15`; e.currentTarget.style.color = p.color; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--navy-light)'; e.currentTarget.style.color = 'var(--text)'; }}
-                >
-                  {p.icon} {p.name} ↗
-                </button>
-              ))}
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+        <h3 style={{ fontSize: 20, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          🏨 Hotels in {hotelCity.toUpperCase()}
+          {nights && <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-dim)', marginLeft: 4 }}>· {nights} nights</span>}
+        </h3>
+        {/* Sort */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Sort:</span>
+          {(['price','stars','rating'] as const).map(k => (
+            <button key={k} onClick={() => setSortH(k)}
+              style={{ padding: '4px 10px', borderRadius: 5, border: `1px solid ${sortH===k?'var(--gold)':'var(--navy-border)'}`, background: sortH===k?'rgba(232,160,32,0.12)':'transparent', color: sortH===k?'var(--gold)':'var(--text-dim)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans', textTransform: 'capitalize' }}>
+              {k}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Star filter */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-dim)', alignSelf: 'center' }}>Category:</span>
+        {[null, 3, 4, 5].map(s => (
+          <button key={s ?? 'all'} onClick={() => setStarFilter(s)}
+            style={{ padding: '5px 12px', borderRadius: 6, border: `1px solid ${starFilter===s?'var(--gold)':'var(--navy-border)'}`, background: starFilter===s?'rgba(232,160,32,0.15)':'transparent', color: starFilter===s?'var(--gold)':'var(--text-dim)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}>
+            {s === null ? 'All' : s === 5 ? '⭐⭐⭐⭐⭐ Luxury' : s === 4 ? '⭐⭐⭐⭐ Upscale' : '⭐⭐⭐ Standard'}
+          </button>
+        ))}
+      </div>
+
+      {/* Hotel cards */}
+      {displayed.map((hotel, i) => (
+        <div key={hotel.id} style={{ border: `1px solid ${i===0&&sortH==='price'?'rgba(232,160,32,0.3)':'var(--navy-border)'}`, borderRadius: 12, background: i===0&&sortH==='price'?'rgba(232,160,32,0.04)':'var(--navy-mid)', padding: '16px 20px', marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'flex-start', gap: 16 }}>
+            <div>
+              {i === 0 && sortH === 'price' && <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--gold)', marginBottom: 4, letterSpacing: '0.08em' }}>★ BEST PRICE</div>}
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{hotel.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 6 }}>
+                {'★'.repeat(Math.min(hotel.stars || 3, 5))}{'☆'.repeat(Math.max(5-(hotel.stars||3),0))}
+                {hotel.rating > 0 && <span style={{ marginLeft: 8 }}>· {hotel.rating.toFixed(1)} guest rating</span>}
+                {hotel.address && <span style={{ marginLeft: 8 }}>· {hotel.address}</span>}
+              </div>
+              {hotel.amenities?.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {hotel.amenities.slice(0, 4).map(a => (
+                    <span key={a} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: 'rgba(255,255,255,0.06)', color: 'var(--text-dim)' }}>{a}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)', whiteSpace: 'nowrap' }}>
+                {fmtPrice(hotel.pricePerNight, intent.currency || hotel.currency || 'USD')}<span style={{ fontSize: 13, fontWeight: 400 }}>/night</span>
+              </div>
+              {nights && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 6 }}>≈ {fmtPrice(hotel.pricePerNight * nights, intent.currency || hotel.currency || 'USD')} total</div>}
+              <div style={{ display: 'flex', gap: 6, marginTop: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                {links.map(p => (
+                  <button key={p.name}
+                    onClick={() => { window.open(p.url, '_blank'); onBook('hotel', p.name, p.url, { hotel: hotel.name, destination: hotelCity }); }}
+                    style={{ padding: '6px 12px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans', transition: 'all 0.15s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `${p.color}15`; e.currentTarget.style.color = p.color; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--navy-light)'; e.currentTarget.style.color = 'var(--text)'; }}
+                  >
+                    {p.icon} {p.name} ↗
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       ))}
+      {filtered.length > 5 && !showAll && (
+        <button onClick={() => setShowAll(true)}
+          style={{ width: '100%', padding: '10px', borderRadius: 8, border: '1px solid var(--navy-border)', background: 'transparent', color: 'var(--text-dim)', fontSize: 13, cursor: 'pointer', fontFamily: 'DM Sans', marginBottom: 8 }}>
+          Show {filtered.length - 5} more hotels ↓
+        </button>
+      )}
       {hotels.length === 0 && (
         <div style={{ padding: '20px', borderRadius: 10, background: 'var(--navy-mid)', border: '1px solid var(--navy-border)', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-dim)', fontSize: 13, marginBottom: 10 }}>Search hotels directly:</p>
@@ -315,10 +391,11 @@ function parseDuration(dur: string): number {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function ConfirmationStage({ itineraries, intent, onSaveBooking }: {
+export default function ConfirmationStage({ itineraries, intent, onSaveBooking, cars = [] }: {
   itineraries: Itinerary[];
   intent: TripIntent;
   onSaveBooking: (type: string, partner: string, url: string, details: object) => void;
+  cars?: any[];
 }) {
   const [sort, setSort]   = useState<SortKey>('price');
   const [saved, setSaved] = useState<string[]>([]);
@@ -506,16 +583,47 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
       {(wantCar || wantTrain) && (
         <div style={{ marginTop: 28, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {wantCar && (
-            <div style={{ flex: 1, minWidth: 240, border: '1px solid var(--navy-border)', borderRadius: 12, padding: '16px 20px', background: 'var(--navy-mid)' }}>
-              <div style={{ fontWeight: 600, marginBottom: 10 }}>🚗 Car Rental</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {buildCarLinks(intent).map(p => (
-                  <button key={p.name} onClick={() => { window.open(p.url, '_blank'); onSaveBooking('car', p.name, p.url, {}); }}
-                    style={{ padding: '7px 13px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}>
-                    {p.icon} {p.name} ↗
-                  </button>
-                ))}
-              </div>
+            <div style={{ width: '100%', border: '1px solid var(--navy-border)', borderRadius: 12, padding: '16px 20px', background: 'var(--navy-mid)' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 14 }}>🚗 Car Rental</div>
+              {cars.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {cars.slice(0, 5).map((car: any) => (
+                    <div key={car.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '14px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>{car.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 5 }}>
+                          {car.category} · {car.seats} seats · {car.transmission} · {car.provider}
+                        </div>
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                          {car.features?.slice(0,3).map((f: string) => (
+                            <span key={f} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: 'rgba(45,212,160,0.1)', color: 'var(--green)' }}>{f}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--gold)', fontFamily: 'Cormorant Garamond, serif', whiteSpace: 'nowrap' }}>
+                          {fmtPrice(car.pricePerDay, intent.currency || car.currency)}<span style={{ fontSize: 12, fontWeight: 400 }}>/day</span>
+                        </div>
+                        {car.totalPrice > 0 && <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6 }}>≈ {fmtPrice(car.totalPrice, intent.currency || car.currency)} total</div>}
+                        <a href={car.bookingUrl} target="_blank" rel="noopener noreferrer"
+                          onClick={() => onSaveBooking('car', car.provider, car.bookingUrl, { car: car.name })}
+                          style={{ display: 'inline-block', padding: '6px 14px', borderRadius: 6, background: 'var(--gold)', color: 'var(--navy)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
+                          Book ↗
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {buildCarLinks(intent).map(p => (
+                    <button key={p.name} onClick={() => { window.open(p.url, '_blank'); onSaveBooking('car', p.name, p.url, {}); }}
+                      style={{ padding: '7px 13px', borderRadius: 6, background: 'var(--navy-light)', border: `1px solid ${p.color}50`, color: 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans' }}>
+                      {p.icon} {p.name} ↗
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {wantTrain && (

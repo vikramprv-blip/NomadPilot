@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 type DestSection = 'overview'|'weather'|'map'|'restaurants'|'embassy'|'safety'|'flighttracker';
 
@@ -308,24 +308,29 @@ const SECTIONS: { id: DestSection; icon: string; label: string }[] = [
   { id: 'flighttracker', icon: '✈', label: 'Tracker' },
 ];
 
-export default function DestinationTab() {
-  const [destination, setDestination] = useState('');
-  const [active, setDestination2] = useState('');
-  const [section, setSection] = useState<DestSection>('weather');
+export default function DestinationTab({ currentDestination }: { currentDestination?: string }) {
+  const [destination, setDestination] = useState(currentDestination || '');
+  const [active, setDestination2] = useState(currentDestination || '');
+  const [section, setSection] = useState<DestSection>(currentDestination ? 'overview' : 'weather');
   const [overviewData, setOverviewData] = useState<any>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
 
-  const search = async () => {
-    if (!destination.trim()) return;
-    setDestination2(destination);
+  const doSearch = async (dest: string) => {
+    if (!dest.trim()) return;
+    setDestination2(dest);
     setOverviewLoading(true);
     try {
-      const res = await fetch(`/api/destination?destination=${encodeURIComponent(destination)}&type=all`);
+      const res = await fetch(`/api/destination?destination=${encodeURIComponent(dest)}&type=all`);
       setOverviewData(await res.json());
     } finally {
       setOverviewLoading(false);
     }
   };
+  const search = () => doSearch(destination);
+
+  // Auto-search when pre-filled from a trip
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (currentDestination) doSearch(currentDestination); }, [currentDestination]);
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 0' }}>

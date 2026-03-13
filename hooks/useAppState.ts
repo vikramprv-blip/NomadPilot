@@ -50,25 +50,36 @@ export function useAppState() {
 
     try {
       const leg = formData.legs?.[0] || {};
+      // For multi-city, last leg is the final destination
+      const lastLeg = formData.legs?.[formData.legs.length - 1] || leg;
+      const isMultiCity = formData.tripType === 'multicity' && formData.legs?.length > 1;
+
       const intent = safeIntent({
-        origin:        leg.from        || '',
-        destination:   leg.to          || '',
-        departureDate: leg.date        || leg.departure || '',
-        returnDate:    leg.return      || formData.returnDate || '',
-        travelers:     formData.travelers || 1,
-        cabinClass:    formData.cabinClass || 'economy',
-        nationality:   formData.nationality || '',
-        currency:      formData.currency || 'USD',
-        services:      formData.services || ['flight', 'hotel'],
+        origin:           leg.from        || '',
+        destination:      lastLeg.to      || leg.to || '',
+        departureDate:    leg.date        || leg.departure || '',
+        returnDate:       leg.return      || formData.returnDate || '',
+        travelers:        formData.travelers || 1,
+        cabinClass:       formData.cabinClass || 'economy',
+        nationality:      formData.nationality || '',
+        currency:         formData.currency || 'USD',
+        services:         formData.services || ['flight', 'hotel'],
+        tripType:         formData.tripType || 'return',
+        legs:             isMultiCity ? formData.legs : undefined,
+        // Hotel-specific fields from form
+        hotelDestination: formData.hotelCity || null,
+        nights:           formData.hotelNights || null,
         preferences: {
-          cabinClass: formData.cabinClass || 'economy',
+          cabinClass:  formData.cabinClass || 'economy',
+          hotelStars:  formData.hotelStars || null,
         },
         constraints: {
           visaPassport: formData.nationality || '',
         },
       });
 
-      if (!intent.origin || !intent.destination) {
+      const hasLegs = isMultiCity && formData.legs?.some((l: any) => l.from && l.to);
+      if (!hasLegs && (!intent.origin || !intent.destination)) {
         throw new Error('Please enter both origin and destination cities.');
       }
       if (!intent.departureDate) {
@@ -136,7 +147,7 @@ export function useAppState() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Trip generation failed');
-      setState(prev => ({ ...prev, stage: 'confirmation', itineraries: data.itineraries || [] }));
+      setState(prev => ({ ...prev, stage: 'confirmation', itineraries: data.itineraries || [], cars: data.cars || [] }));
     } catch (err: any) {
       setError(err.message);
       setState(prev => ({ ...prev, stage: 'input' }));

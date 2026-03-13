@@ -79,6 +79,9 @@ export default function InputStage({ onSubmit, onAISubmit, loading }: {
   const [cabinClass, setCabinClass] = useState('economy');
   const [mainLeg, setMainLeg]   = useState({ from:'', to:'', departure:'', return:'' });
   const [legs, setLegs]         = useState<Leg[]>([{from:'',to:'',date:''},{from:'',to:'',date:''}]);
+  const [hotelCity, setHotelCity]   = useState('');
+  const [hotelNights, setHotelNights] = useState<number|''>('');
+  const [hotelStars, setHotelStars]   = useState<number|''>('');
 
   const toggleSvc = (id:string) => setServices(p => p.includes(id) ? p.filter(s=>s!==id) : [...p,id]);
   const updateLeg = (i:number, f:keyof Leg, v:string) => setLegs(p => p.map((l,idx)=> idx===i?{...l,[f]:v}:l));
@@ -217,13 +220,42 @@ export default function InputStage({ onSubmit, onAISubmit, loading }: {
               </div>
             </div>
 
+            {/* Hotel options — shown when hotel service is selected */}
+            {services.includes('hotel') && (
+              <div style={{marginBottom:20,padding:'14px 16px',borderRadius:10,background:'rgba(255,255,255,0.03)',border:'1px solid var(--navy-border)'}}>
+                <label style={{...labelStyle,marginBottom:12}}>🏨 Hotel Preferences</label>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+                  <div>
+                    <label style={labelStyle}>Hotel City (if different)</label>
+                    <div style={{position:'relative'}}>
+                      <span style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:13}}>🏙</span>
+                      <input className="input-field" style={{paddingLeft:30}} placeholder="e.g. Estepona, Marbella..." value={hotelCity} onChange={e=>setHotelCity(e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Number of Nights</label>
+                    <input className="input-field" type="number" min={1} max={30} placeholder="e.g. 5" value={hotelNights} onChange={e=>setHotelNights(e.target.value ? Number(e.target.value) : '')} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Hotel Category</label>
+                    <select className="input-field" value={hotelStars} onChange={e=>setHotelStars(e.target.value ? Number(e.target.value) : '')}>
+                      <option value="">Any category</option>
+                      <option value="3">⭐⭐⭐ Standard (3★)</option>
+                      <option value="4">⭐⭐⭐⭐ Upscale (4★)</option>
+                      <option value="5">⭐⭐⭐⭐⭐ Luxury (5★)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {nationality&&(
               <div style={{marginBottom:20,padding:'10px 14px',borderRadius:8,background:'rgba(232,160,32,0.07)',border:'1px solid rgba(232,160,32,0.2)',fontSize:13,color:'var(--gold-light)',display:'flex',alignItems:'center',gap:8}}>
                 🛂 Visa requirements for <strong style={{marginLeft:4}}>{nationality}</strong> travelers will be checked automatically
               </div>
             )}
 
-            <button className="btn btn-gold btn-lg" onClick={()=>onSubmit({tripType,services,nationality,currency,legs:tripType==='multicity'?legs:[mainLeg],travelers,cabinClass})} disabled={!canSearch||loading} style={{width:'100%',justifyContent:'center'}}>
+            <button className="btn btn-gold btn-lg" onClick={()=>onSubmit({tripType,services,nationality,currency,legs:tripType==='multicity'?legs:[mainLeg],travelers,cabinClass,hotelCity:hotelCity||undefined,hotelNights:hotelNights||undefined,hotelStars:hotelStars||undefined})} disabled={!canSearch||loading} style={{width:'100%',justifyContent:'center'}}>
               {loading?<span className="spin">◌</span>:'🔍'} {loading?'Searching...':'Search Reservations'}
             </button>
           </div>

@@ -44,7 +44,11 @@ const CITY_TO_ISO2: Record<string, string> = {
   // UK
   london:'GB', manchester:'GB', birmingham:'GB', lhr:'GB', lgw:'GB', ltn:'GB',
   // USA
-  'new york':'US', 'los angeles':'US', chicago:'US', jfk:'US', lax:'US', ord:'US',
+  'new york':'US', 'new york city':'US', nyc:'US', ny:'US', 'los angeles':'US', la:'US',
+  chicago:'US', jfk:'US', lax:'US', ord:'US', sfo:'US', mia:'US', bos:'US',
+  'washington':'US', 'washington dc':'US', dfw:'US', atl:'US', sea:'US', den:'US',
+  houston:'US', dallas:'US', miami:'US', boston:'US', seattle:'US', denver:'US',
+  'san francisco':'US', 'las vegas':'US', orlando:'US', mco:'US', usa:'US', us:'US',
   // UAE
   dubai:'AE', 'abu dhabi':'AE', dxb:'AE', auh:'AE',
   // Thailand
