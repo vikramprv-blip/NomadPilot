@@ -11,51 +11,149 @@ const FALLBACK_INTENT = {
   services: ['flight', 'hotel'], nationality: null, tripType: 'oneway', legs: [] as any[],
 };
 
+
+// Pre-process user input to expand common short forms before sending to Gemini
+function normalizeQuery(q: string): string {
+  return q
+    // Common city shorthand → full name (Gemini handles full names better)
+    .replace(/\bpar\b/gi, 'Paris')
+    .replace(/\bbll\b/gi, 'Billund')
+    .replace(/\bagp\b/gi, 'Malaga')
+    .replace(/\blhr\b/gi, 'London')
+    .replace(/\blon\b/gi, 'London')
+    .replace(/\bdxb\b/gi, 'Dubai')
+    .replace(/\bdel\b/gi, 'Delhi')
+    .replace(/\bjfk\b/gi, 'New York')
+    .replace(/\bnyc\b/gi, 'New York')
+    .replace(/\bsin\b/gi, 'Singapore')
+    .replace(/\bbkk\b/gi, 'Bangkok')
+    .replace(/\bsyd\b/gi, 'Sydney')
+    .replace(/\bmel\b/gi, 'Melbourne')
+    .replace(/\bhkg\b/gi, 'Hong Kong')
+    .replace(/\bnrt\b/gi, 'Tokyo')
+    .replace(/\bfra\b/gi, 'Frankfurt')
+    .replace(/\bams\b/gi, 'Amsterdam')
+    .replace(/\bbcn\b/gi, 'Barcelona')
+    .replace(/\bmad\b/gi, 'Madrid')
+    .replace(/\bfco\b/gi, 'Rome')
+    .replace(/\bist\b/gi, 'Istanbul')
+    .replace(/\bcph\b/gi, 'Copenhagen')
+    .replace(/\bosl\b/gi, 'Oslo')
+    .replace(/\barn\b/gi, 'Stockholm')
+    .replace(/\bmuc\b/gi, 'Munich')
+    .replace(/\bzrh\b/gi, 'Zurich')
+    .replace(/\bdoh\b/gi, 'Doha')
+    .replace(/\bauh\b/gi, 'Abu Dhabi')
+    .replace(/\bkul\b/gi, 'Kuala Lumpur')
+    .replace(/\bdps\b/gi, 'Bali')
+    .replace(/\bnbo\b/gi, 'Nairobi')
+    .replace(/\bcpt\b/gi, 'Cape Town')
+    .replace(/\bjnb\b/gi, 'Johannesburg')
+    .replace(/\bcai\b/gi, 'Cairo')
+    .replace(/\bbom\b/gi, 'Mumbai')
+    .replace(/\bblr\b/gi, 'Bangalore')
+    // Date normalizations
+    .replace(/\b(\d{1,2})\s*mar\b/gi, '$1 March')
+    .replace(/\b(\d{1,2})\s*apr\b/gi, '$1 April')
+    .replace(/\b(\d{1,2})\s*may\b/gi, '$1 May')
+    .replace(/\b(\d{1,2})\s*jun\b/gi, '$1 June')
+    .replace(/\b(\d{1,2})\s*jul\b/gi, '$1 July')
+    .replace(/\b(\d{1,2})\s*aug\b/gi, '$1 August')
+    .replace(/\b(\d{1,2})\s*sep\b/gi, '$1 September')
+    .replace(/\b(\d{1,2})\s*oct\b/gi, '$1 October')
+    .replace(/\b(\d{1,2})\s*nov\b/gi, '$1 November')
+    .replace(/\b(\d{1,2})\s*dec\b/gi, '$1 December')
+    .replace(/\b(\d{1,2})\s*jan\b/gi, '$1 January')
+    .replace(/\b(\d{1,2})\s*feb\b/gi, '$1 February')
+    // People
+    .replace(/\b(\d+)\s*person\b/gi, '$1 people')
+    .replace(/\bpax\b/gi, 'passengers');
+}
+
 // Today is 2026-03-13 — used for resolving relative dates like "18 mar", "next Friday"
 const TODAY = '2026-03-13';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userMessage } = await req.json();
+    const { userMessage: rawMessage } = await req.json();
+    const userMessage = normalizeQuery(rawMessage);
 
-    const cached = await getCached('ai-brain', userMessage);
-    if (cached) return NextResponse.json(safeParseGeminiJSON(cached, FALLBACK_INTENT));
+    // Cache disabled for ai-brain — intent parsing is fast and must always be fresh
+    // const cached = await getCached('ai-brain', userMessage);
 
     const limit = await checkGeminiRateLimit();
     if (!limit.allowed) {
       return NextResponse.json({ error: limit.reason, retryAfter: (limit as any).retryAfter }, { status: 429 });
     }
 
-    const prompt = `Today is ${TODAY}. Extract travel intent from the request below.
+    const prompt = `Today is ${TODAY}. You are a travel intent parser. Extract structured travel data from the user request.
 
-RULES:
-- For multi-city / multi-leg trips (e.g. "BLL to Paris 18 Mar, Paris to Malaga 20 Mar"), populate the "legs" array with one entry per leg.
-- For single trips, set origin/destination/departureDate directly AND put the single leg in "legs" too.
-- Resolve city names to IATA codes where known (e.g. Paris=CDG, Malaga=AGP, Billund=BLL, London=LHR, Dubai=DXB, Delhi=DEL).
-- Resolve relative dates like "18 mar", "next Friday", "tomorrow" to YYYY-MM-DD format using today's date.
-- If no year given, assume 2026.
-- cabinClass: "economy" | "business" | "first" | "premium_economy"
-- tripType: "return" | "oneway" | "multicity"
+CITY/AIRPORT ABBREVIATION LOOKUP (always resolve these):
+- "par", "paris", "CDG", "ORY" → "CDG" (Paris Charles de Gaulle)
+- "bll", "billund" → "BLL" (Billund, Denmark)
+- "agp", "malaga", "málaga" → "AGP" (Malaga, Spain)
+- "lhr", "lon", "london" → "LHR" (London Heathrow)
+- "dxb", "dubai" → "DXB" (Dubai)
+- "del", "delhi", "new delhi" → "DEL" (Delhi)
+- "jfk", "nyc", "new york" → "JFK" (New York)
+- "sin", "singapore" → "SIN"
+- "bkk", "bangkok" → "BKK"
+- "syd", "sydney" → "SYD"
+- "mel", "melbourne" → "MEL"
+- "hkg", "hong kong" → "HKG"
+- "nrt", "tyo", "tokyo" → "NRT"
+- "fra", "frankfurt" → "FRA"
+- "ams", "amsterdam" → "AMS"
+- "bcn", "barcelona" → "BCN"
+- "mad", "madrid" → "MAD"
+- "fcо", "rom", "rome" → "FCO"
+- "ist", "istanbul" → "IST"
+- "cph", "copenhagen" → "CPH"
+- "osl", "oslo" → "OSL"
+- "arn", "sto", "stockholm" → "ARN"
+- "muc", "munich" → "MUC"
+- "zrh", "zurich" → "ZRH"
+- "gva", "geneva" → "GVA"
+- "bom", "mum", "mumbai" → "BOM"
+- "blr", "bangalore" → "BLR"
+- "doh", "doha" → "DOH"
+- "auh", "abu dhabi" → "AUH"
+- "kul", "kuala lumpur" → "KUL"
+- "cgk", "jakarta" → "CGK"
+- "bali", "dps", "denpasar" → "DPS"
+- "mex", "mexico city" → "MEX"
+- "gru", "sao paulo" → "GRU"
+- "eze", "bue", "buenos aires" → "EZE"
+- "scl", "santiago" → "SCL"
+- "nbo", "nairobi" → "NBO"
+- "cpt", "cape town" → "CPT"
+- "jnb", "johannesburg" → "JNB"
+- "cai", "cairo" → "CAI"
 
-Return ONLY valid JSON, no markdown, no explanation:
-{
-  "origin": "IATA or city of first leg",
-  "destination": "IATA or city of last leg",
-  "departureDate": "YYYY-MM-DD",
-  "returnDate": "YYYY-MM-DD or null",
-  "travelers": 1,
-  "tripType": "oneway",
-  "services": ["flight"],
-  "nationality": null,
-  "preferences": {
-    "cabinClass": "economy",
-    "maxBudget": null
-  },
-  "legs": [
-    { "from": "BLL", "to": "CDG", "date": "2026-03-18", "cabinClass": "business" },
-    { "from": "CDG", "to": "AGP", "date": "2026-03-20", "cabinClass": "business" }
-  ]
-}
+DATE RULES (today = ${TODAY}):
+- "18 mar", "mar 18", "march 18" → "2026-03-18"
+- "20 mar" → "2026-03-20"
+- "next friday" → calculate from today
+- Always output YYYY-MM-DD format
+- If no year, assume 2026
+
+MULTI-CITY RULES:
+- If request has multiple routes (e.g. "BLL to PAR 18 mar, PAR to AGP 20 mar"), create one leg per route
+- Comma or semicolon usually separates legs
+- tripType = "multicity" when legs > 1, "return" when returnDate set, else "oneway"
+
+PEOPLE/TRAVELERS:
+- "2 person", "2 people", "2 passengers", "for 2" → travelers: 2
+- "solo", "1 person" → travelers: 1
+
+CABIN CLASS:
+- "business", "biz", "business class" → "business"
+- "first", "first class" → "first"
+- "premium", "premium economy" → "premium_economy"
+- default → "economy"
+
+Return ONLY a JSON object, absolutely no markdown fences, no explanation text:
+{"origin":"BLL","destination":"AGP","departureDate":"2026-03-18","returnDate":null,"travelers":2,"tripType":"multicity","services":["flight"],"nationality":null,"preferences":{"cabinClass":"business","maxBudget":null},"legs":[{"from":"BLL","to":"CDG","date":"2026-03-18","cabinClass":"business"},{"from":"CDG","to":"AGP","date":"2026-03-20","cabinClass":"business"}]}
 
 Travel request: "${userMessage}"`;
 
