@@ -302,12 +302,26 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
   const wantCar     = services.includes('car');
   const wantTrain   = services.includes('train');
 
+  // Detect multi-city
+  const isMultiCity = (intent as any).tripType === 'multicity' || (intent as any).legs?.length > 1;
+  const intentLegs  = (intent as any).legs || [];
+
   // Collect all unique flights across itineraries
   const allFlights = Array.from(
     new Map(
       itineraries.flatMap(it => it.flights).map(f => [f.id, f])
     ).values()
   );
+
+  // Group flights by leg for multi-city display
+  const flightsByLeg: Record<number, typeof allFlights> = {};
+  if (isMultiCity) {
+    allFlights.forEach(f => {
+      const idx = (f as any).legIndex ?? 0;
+      if (!flightsByLeg[idx]) flightsByLeg[idx] = [];
+      flightsByLeg[idx].push(f);
+    });
+  }
 
   // Collect hotels
   const allHotels = Array.from(
@@ -363,9 +377,11 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
           {wantFlight ? 'Available Flights' : 'Your Results'}
         </h2>
         <p style={{ color: 'var(--text-dim)', fontSize: 14, marginBottom: 12 }}>
-          {intent.origin?.toUpperCase()} → {intent.destination?.toUpperCase()}
-          {intent.departureDate && ` · ${new Date(intent.departureDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`}
-          {intent.returnDate && ` · Return ${new Date(intent.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+          {isMultiCity && intentLegs.length > 0
+            ? intentLegs.map((l: any, i: number) => `${l.from}→${l.to} (${l.date || ''})`).join(' · ')
+            : `${intent.origin?.toUpperCase()} → ${intent.destination?.toUpperCase()}`}
+          {!isMultiCity && intent.departureDate && ` · ${new Date(intent.departureDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`}
+          {!isMultiCity && intent.returnDate && ` · Return ${new Date(intent.returnDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
           {` · ${intent.travelers || 1} passenger${(intent.travelers||1)>1?'s':''} · ${intent.preferences?.cabinClass || 'Economy'} · ${intent.currency || 'USD'}`}
         </p>
         {nationality && !/^[A-Z]{3}$/.test(nationality.toUpperCase()) && (
@@ -411,7 +427,35 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
       )}
 
       {/* Flight list */}
-      {wantFlight && (
+      {wantFlight && isMultiCity && Object.keys(flightsByLeg).length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {Object.entries(flightsByLeg).map(([legIdxStr, legFlights]) => {
+            const legIdx = parseInt(legIdxStr);
+            const leg = intentLegs[legIdx];
+            return (
+              <div key={legIdx}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, padding: '8px 14px', borderRadius: 8, background: 'rgba(232,160,32,0.08)', border: '1px solid rgba(232,160,32,0.2)' }}>
+                  <span style={{ fontSize: 16 }}>✈</span>
+                  <div>
+                    <span style={{ fontWeight: 700, color: 'var(--gold)', fontSize: 14 }}>Leg {legIdx + 1}: {leg?.from || ''} → {leg?.to || ''}</span>
+                    {leg?.date && <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 10 }}>{new Date(leg.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>}
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 'auto' }}>{legFlights.length} option{legFlights.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {legFlights.sort((a, b) => a.price - b.price).map((flight, i) => (
+                    <FlightRow key={flight.id} flight={flight} intent={intent}
+                      rank={i + 1} onBook={(p, u) => handleBook(p, u, flight)} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Single route flight list */}
+      {wantFlight && !isMultiCity && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {sorted.map((flight, i) => (
             <FlightRow

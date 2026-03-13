@@ -88,43 +88,57 @@ export async function POST(req: NextRequest) {
 
     const hasRapidAPI = !!process.env.RAPIDAPI_KEY;
 
-    // ── Flights: Kiwi (better coverage) → fallback Amadeus ──────────────────
-    // For multi-city, search each leg separately and combine results
-    const legs = (intent as any).legs?.length > 1
+    // ── Flights: per-leg search ──────────────────────────────────────────────
+    const intentLegs: any[] = (intent as any).legs?.length > 0
       ? (intent as any).legs
       : [{ from: intent.origin, to: intent.destination, date: intent.departureDate, cabinClass: intent.preferences?.cabinClass }];
 
-    let flights: FlightOption[] = [];
-    if (hasRapidAPI) {
-      // Search all legs in parallel
-      const legResults = await Promise.all(legs.map((leg: any) =>
-        searchKiwiFlights({
-          origin:      leg.from || intent.origin,
-          destination: leg.to   || intent.destination,
-          date:        leg.date || intent.departureDate,
-          returnDate:  legs.length === 1 ? (intent.returnDate || undefined) : undefined,
-          adults:      intent.travelers || 1,
-          cabin:       leg.cabinClass || intent.preferences?.cabinClass || 'economy',
-          currency:    intent.currency || 'USD',
-        }).then(r => r.map(kiwiToFlight))
-      ));
-      // For multi-city: label each leg result and flatten
-      if (legs.length > 1) {
-        flights = legResults.map((legFlights, i) => {
-          const leg = legs[i];
-          return legFlights.slice(0, 5).map((f: FlightOption) => ({
-            ...f,
-            legIndex: i,
-            legLabel: `Leg ${i + 1}: ${leg.from} → ${leg.to}`,
-          }));
-        }).flat();
-      } else {
-        flights = legResults[0] || [];
-      }
-    }
-    if (flights.length === 0) {
-      flights = await searchFlights(intent);
-    }
+    const isMultiCity = intentLegs.length > 1;
+
+    // Search each leg independently (parallel)
+    const legFlightResults: FlightOption[][] = await Promise.all(
+      intentLegs.map(async (leg: any) => {
+        const from      = leg.from || intent.origin;
+        const to        = leg.to   || intent.destination;
+        const date      = leg.date || intent.departureDate;
+        const cabin     = leg.cabinClass || intent.preferences?.cabinClass || 'economy';
+        let results: FlightOption[] = [];
+
+        if (hasRapidAPI) {
+          try {
+            const kiwiRes = await searchKiwiFlights({
+              origin: from, destination: to, date,
+              returnDate: isMultiCity ? undefined : (intent.returnDate || undefined),
+              adults: intent.travelers || 1, cabin, currency: intent.currency || 'USD',
+            });
+            results = kiwiRes.map(kiwiToFlight);
+          } catch (e) { console.error('Kiwi leg error:', e); }
+        }
+
+        // Amadeus fallback per leg
+        if (results.length === 0) {
+          try {
+            results = await searchFlights({
+              ...intent,
+              origin: from, destination: to, departureDate: date,
+              returnDate: isMultiCity ? '' : intent.returnDate,
+              preferences: { ...intent.preferences, cabinClass: cabin },
+            });
+          } catch (e) { console.error('Amadeus leg error:', e); }
+        }
+
+        // Tag each flight with its leg info
+        return results.slice(0, 8).map((f: FlightOption) => ({
+          ...f,
+          legIndex: intentLegs.indexOf(leg),
+          legLabel: isMultiCity ? `Leg ${intentLegs.indexOf(leg) + 1}: ${from} → ${to}` : undefined,
+        }));
+      })
+    );
+
+    // For multi-city: keep legs separate so UI can group them
+    // For single: flatten normally
+    let flights: FlightOption[] = legFlightResults.flat();
 
     // ── Hotels: Booking.com → fallback Amadeus ───────────────────────────────
     let hotels: HotelOption[] = [];
@@ -145,37 +159,69 @@ export async function POST(req: NextRequest) {
       hotels = await searchHotels(intent);
     }
 
-    if (!flights.length) {
-      return NextResponse.json({ error: 'No flights found for these dates' }, { status: 404 });
+    // For multi-city, check each leg has results
+    if (isMultiCity) {
+      const emptyLegs = legFlightResults
+        .map((res, i) => res.length === 0 ? `Leg ${i+1} (${intentLegs[i].from}→${intentLegs[i].to})` : null)
+        .filter(Boolean);
+      if (emptyLegs.length === intentLegs.length) {
+        return NextResponse.json({ error: `No flights found for any leg. Try different dates.` }, { status: 404 });
+      }
+    } else if (!flights.length) {
+      return NextResponse.json({
+        error: `No results for ${intent.origin} → ${intent.destination} on ${intent.departureDate}. Try different dates or airports.`,
+        tip: 'Amadeus test environment has limited routes. Major hubs like LHR→JFK work best.'
+      }, { status: 404 });
     }
 
-    // Build up to 3 itinerary options
+    // Build itinerary options
     const itineraries: Itinerary[] = [];
     const hotelOptions  = hotels.slice(0, 3);
-    const flightOptions = flights.slice(0, 10); // Show up to 10 flight options
 
-    for (let i = 0; i < flightOptions.length; i++) {
-      const selectedFlight = flightOptions[i];
-      const selectedHotel  = needsHotel ? (hotelOptions[i % Math.max(hotelOptions.length, 1)] || null) : null;
-
-      // Skip only if hotel was requested but none available
-      if (needsHotel && !selectedHotel) continue;
-
-      const { score, totalCost } = scoreItinerary([selectedFlight], selectedHotel, intent);
-
-      itineraries.push({
-        id: nanoid(),
-        score,
-        flights: [selectedFlight],
-        hotels: selectedHotel ? [selectedHotel] : [],
-        ground: [],
-        totalCost,
-        currency: selectedFlight.currency,
-        visaRequired: false,
-        summary: selectedHotel
-          ? `Option ${i + 1}: ${selectedFlight.airline} flight + ${selectedHotel.name}`
-          : `Option ${i + 1}: ${selectedFlight.airline} flight`,
-      });
+    if (isMultiCity) {
+      // Multi-city: create combos using one flight per leg
+      // Take top 3 options from each leg, build up to 5 combo itineraries
+      const perLeg = legFlightResults.map(res => res.slice(0, 3));
+      const maxCombos = Math.min(5, Math.max(...perLeg.map(r => r.length)));
+      for (let i = 0; i < maxCombos; i++) {
+        const comboFlights = perLeg.map(legRes => legRes[Math.min(i, legRes.length - 1)]).filter(Boolean);
+        if (comboFlights.length === 0) continue;
+        const selectedHotel = needsHotel ? (hotelOptions[i % Math.max(hotelOptions.length, 1)] || null) : null;
+        const { score, totalCost } = scoreItinerary(comboFlights, selectedHotel, intent);
+        const legSummary = intentLegs.map((l: any, idx: number) => {
+          const f = perLeg[idx]?.[Math.min(i, (perLeg[idx]?.length||1) - 1)];
+          return f ? `${l.from}→${l.to} (${f.airline})` : `${l.from}→${l.to}`;
+        }).join(' + ');
+        itineraries.push({
+          id: nanoid(), score,
+          flights: comboFlights,
+          hotels: selectedHotel ? [selectedHotel] : [],
+          ground: [], totalCost,
+          currency: comboFlights[0]?.currency || intent.currency || 'USD',
+          visaRequired: false,
+          summary: `Multi-city option ${i + 1}: ${legSummary}`,
+        });
+      }
+    } else {
+      // Single route: show up to 10 flight options
+      const flightOptions = flights.slice(0, 10);
+      for (let i = 0; i < flightOptions.length; i++) {
+        const selectedFlight = flightOptions[i];
+        const selectedHotel  = needsHotel ? (hotelOptions[i % Math.max(hotelOptions.length, 1)] || null) : null;
+        if (needsHotel && !selectedHotel) continue;
+        const { score, totalCost } = scoreItinerary([selectedFlight], selectedHotel, intent);
+        itineraries.push({
+          id: nanoid(), score,
+          flights: [selectedFlight],
+          hotels: selectedHotel ? [selectedHotel] : [],
+          ground: [], totalCost,
+          currency: selectedFlight.currency,
+          visaRequired: false,
+          summary: selectedHotel
+            ? `Option ${i + 1}: ${selectedFlight.airline} + ${selectedHotel.name}`
+            : `Option ${i + 1}: ${selectedFlight.airline}`,
+        });
+      }
     }
 
     // Sort by overall score
