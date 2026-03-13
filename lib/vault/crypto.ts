@@ -27,8 +27,9 @@ async function deriveKey(password: string, salt: Uint8Array<ArrayBuffer>): Promi
   );
 }
 
-function toBase64(buf: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+function toBase64(buf: ArrayBuffer | Uint8Array<ArrayBuffer>): string {
+  const arr = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return btoa(String.fromCharCode(...arr));
 }
 
 function fromBase64(str: string): Uint8Array<ArrayBuffer> {
