@@ -124,12 +124,40 @@ function fmtDuration(dur: string) {
 
 // ─── Single flight row ────────────────────────────────────────────────────────
 function FlightRow({ flight, intent, rank, onBook }: {
-  flight: FlightOption;
+  flight: FlightOption & { isPlaceholder?: boolean };
   intent: TripIntent;
   rank: number;
   onBook: (partner: string, url: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Placeholder: no live data, just link to search
+  if ((flight as any).isPlaceholder) {
+    return (
+      <div style={{ borderRadius: 12, border: '1px dashed rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.02)', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>
+            {flight.origin} → {flight.destination}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+            No live fares available — search directly on flight booking sites
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {[
+            { name: 'Google Flights', url: `https://www.google.com/travel/flights?q=flights+from+${flight.origin}+to+${flight.destination}`, color: '#4285F4' },
+            { name: 'Skyscanner', url: `https://www.skyscanner.com/transport/flights/${flight.origin}/${flight.destination}/`, color: '#00A698' },
+            { name: 'Kiwi.com', url: `https://www.kiwi.com/en/search/results/${flight.origin}/${flight.destination}/`, color: '#E5422B' },
+          ].map(l => (
+            <a key={l.name} href={l.url} target="_blank" rel="noopener noreferrer"
+              style={{ padding: '7px 14px', borderRadius: 7, background: `${l.color}18`, border: `1px solid ${l.color}40`, color: l.color, fontSize: 12, fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+              {l.name} ↗
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   const links = buildFlightLinks(flight, intent);
 
   return (

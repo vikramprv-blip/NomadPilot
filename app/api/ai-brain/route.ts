@@ -15,6 +15,10 @@ const CITY_TO_IATA: Record<string, string> = {
   // Spain
   malaga:'AGP', agp:'AGP', barcelona:'BCN', bcn:'BCN', madrid:'MAD', mad:'MAD',
   seville:'SVQ', svq:'SVQ', valencia:'VLC', vlc:'VLC', ibiza:'IBZ', ibz:'IBZ',
+  // Spanish coastal (use nearest airport)
+  estepona:'AGP', marbella:'AGP', torremolinos:'AGP', fuengirola:'AGP',
+  benalmadena:'AGP', nerja:'AGP', ronda:'AGP', costa:'AGP',
+  'costa del sol':'AGP', alicante:'ALC', alc:'ALC', murcia:'MJV',
   // UK
   london:'LHR', lhr:'LHR', heathrow:'LHR', gatwick:'LGW', lgw:'LGW', ltn:'LTN',
   manchester:'MAN', man:'MAN', edinburgh:'EDI', edi:'EDI', birmingham:'BHX', lon:'LHR',
@@ -148,22 +152,41 @@ function regexParseIntent(input: string): any | null {
 
   // Services
   const services: string[] = ['flight'];
-  if (/\bhotel\b/.test(q)) services.push('hotel');
-  if (/\b(?:car|rental|rent)\b/.test(q)) services.push('car');
+  if (/\b(?:hotel|hotels|stay|accommodation|resort|luxury|suite|room|night|nights|lodge|hostel|bnb|airbnb)\b/.test(q)) services.push('hotel');
+  if (/\b(?:car|rental|rent|hire|drive)\b/.test(q)) services.push('car');
+
+  // Hotel destination — look for "hotel in [city]", "stay in [city]", "nights in [city]"
+  const hotelCityMatch = q.match(/(?:hotel|stay|nights?|accommodation|resort|luxury)\s+in\s+([a-z][a-z ]{1,20}?)(?:\s*,|\s*\.|$|\s+for|\s+\d)/i);
+  const hotelDestination = hotelCityMatch ? resolveIATA(hotelCityMatch[1].trim()) : null;
+
+  // Nights — "5 nights", "for 5 nights"
+  const nightsMatch = q.match(/(\d+)\s*nights?/);
+  const nights = nightsMatch ? parseInt(nightsMatch[1]) : null;
+
+  // Stars / quality
+  const hotelStars = /\b5\s*star|luxury|five.star\b/.test(q) ? 5 :
+                     /\b4\s*star|four.star\b/.test(q) ? 4 : null;
 
   // Add cabinClass to each leg
   legs.forEach(l => { l.cabinClass = cabinClass; });
 
+  // Compute returnDate from nights if not set
+  const computedReturn = !returnDate && nights && depDate
+    ? new Date(new Date(depDate).getTime() + nights * 86400000).toISOString().slice(0, 10)
+    : returnDate;
+
   return {
-    origin:        legs[0].from,
-    destination:   legs[legs.length - 1].to,
-    departureDate: depDate,
-    returnDate:    returnDate,
+    origin:           legs[0].from,
+    destination:      legs[legs.length - 1].to,
+    departureDate:    depDate,
+    returnDate:       computedReturn,
     travelers,
-    tripType:      legs.length > 1 ? 'multicity' : returnDate ? 'return' : 'oneway',
+    tripType:         legs.length > 1 ? 'multicity' : computedReturn ? 'return' : 'oneway',
     services,
     nationality,
-    preferences:   { cabinClass, maxBudget: null },
+    hotelDestination: hotelDestination || null,
+    nights:           nights || null,
+    preferences:      { cabinClass, maxBudget: null, hotelStars: hotelStars || null },
     legs,
   };
 }

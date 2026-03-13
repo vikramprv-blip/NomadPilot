@@ -127,6 +127,27 @@ export async function POST(req: NextRequest) {
           } catch (e) { console.error('Amadeus leg error:', e); }
         }
 
+        // If still no results, create a placeholder that links to Google Flights
+        if (results.length === 0) {
+          const depFormatted = date?.replace(/-/g,'') || '';
+          results = [{
+            id:           `gf-${from}-${to}-${date}`,
+            airline:      'Multiple Airlines',
+            flightNumber: 'Search Live',
+            origin:       from,
+            destination:  to,
+            departure:    '—',
+            arrival:      '—',
+            duration:     '—',
+            stops:        0,
+            price:        0,
+            currency:     intent.currency || 'USD',
+            cabin:        cabin || 'economy',
+            bookingUrl:   `https://www.google.com/travel/flights?q=flights+from+${from}+to+${to}+on+${date}`,
+            isPlaceholder: true,
+          } as any];
+        }
+
         // Tag each flight with its leg info
         return results.slice(0, 8).map((f: FlightOption) => ({
           ...f,
@@ -141,22 +162,39 @@ export async function POST(req: NextRequest) {
     let flights: FlightOption[] = legFlightResults.flat();
 
     // ── Hotels: Booking.com → fallback Amadeus ───────────────────────────────
+    // Use hotelDestination if specified (e.g. "hotel in Estepona" → AGP area)
+    const hotelCity  = (intent as any).hotelDestination || intent.destination;
+    const hotelNights = (intent as any).nights || null;
+
+    // checkIn = last leg's date for multi-city, otherwise departure date
+    const hotelCheckIn = isMultiCity
+      ? (intentLegs[intentLegs.length - 1]?.date || intent.departureDate)
+      : intent.departureDate;
+
+    // checkOut = checkIn + nights, or returnDate, or checkIn + 3
+    const checkOut = hotelNights
+      ? new Date(new Date(hotelCheckIn).getTime() + hotelNights * 86400000).toISOString().slice(0, 10)
+      : intent.returnDate?.trim()
+        ? intent.returnDate
+        : new Date(new Date(hotelCheckIn).getTime() + 3 * 86400000).toISOString().slice(0, 10);
+
     let hotels: HotelOption[] = [];
     if (needsHotel && hasRapidAPI) {
-      const checkOut = intent.returnDate?.trim()
-        ? intent.returnDate
-        : new Date(new Date(intent.departureDate).getTime() + 3 * 86400000).toISOString().slice(0, 10);
-      const bkgHotels = await searchBookingHotels({
-        destination: intent.destination,
-        checkIn:     intent.departureDate,
-        checkOut,
-        adults:      intent.travelers || 1,
-        currency:    intent.currency || 'USD',
-      });
-      hotels = bkgHotels.map(bookingToHotel);
+      try {
+        const bkgHotels = await searchBookingHotels({
+          destination: hotelCity,
+          checkIn:     hotelCheckIn,
+          checkOut,
+          adults:      intent.travelers || 1,
+          currency:    intent.currency || 'USD',
+        });
+        hotels = bkgHotels.map(bookingToHotel);
+      } catch (e) { console.error('Booking.com hotel error:', e); }
     }
     if (needsHotel && hotels.length === 0) {
-      hotels = await searchHotels(intent);
+      try {
+        hotels = await searchHotels({ ...intent, destination: hotelCity, departureDate: hotelCheckIn, returnDate: checkOut });
+      } catch (e) { console.error('Amadeus hotel error:', e); }
     }
 
     // For multi-city, check each leg has results
