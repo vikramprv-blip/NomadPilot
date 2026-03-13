@@ -15,7 +15,7 @@ const SALT_LENGTH       = 16;
 const IV_LENGTH         = 12;
 
 // Derive AES key from password + salt using PBKDF2
-async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveKey(password: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   const enc      = new TextEncoder();
   const keyMat   = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
@@ -31,8 +31,8 @@ function toBase64(buf: ArrayBuffer): string {
   return btoa(String.fromCharCode(...new Uint8Array(buf)));
 }
 
-function fromBase64(str: string): Uint8Array {
-  return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+function fromBase64(str: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(atob(str), c => c.charCodeAt(0)) as Uint8Array<ArrayBuffer>;
 }
 
 export interface EncryptedPayload {
@@ -43,8 +43,8 @@ export interface EncryptedPayload {
 
 // Encrypt a JS object with a password
 export async function encrypt(data: object, password: string): Promise<EncryptedPayload> {
-  const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-  const iv   = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+  const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH)) as Uint8Array<ArrayBuffer>;
+  const iv   = crypto.getRandomValues(new Uint8Array(IV_LENGTH)) as Uint8Array<ArrayBuffer>;
   const key  = await deriveKey(password, salt);
   const enc  = new TextEncoder();
 
@@ -63,8 +63,8 @@ export async function encrypt(data: object, password: string): Promise<Encrypted
 
 // Decrypt back to object
 export async function decrypt<T = any>(payload: EncryptedPayload, password: string): Promise<T> {
-  const salt = fromBase64(payload.salt);
-  const iv   = fromBase64(payload.iv);
+  const salt = fromBase64(payload.salt) as Uint8Array<ArrayBuffer>;
+  const iv   = fromBase64(payload.iv) as Uint8Array<ArrayBuffer>;
   const key  = await deriveKey(password, salt);
 
   const plaintext = await crypto.subtle.decrypt(
