@@ -1,29 +1,19 @@
-// lib/validation/helpers.ts
-import {
-  FlightSearchInputSchema,
-  FlightSearchInput,
-} from "./flights.input";
-import {
-  FlightSearchResultSchema,
-  FlightSearchResult,
-} from "./flights.output";
+import { FlightSearchInputSchema } from "./flights.input";
+import { FlightSearchResultSchema } from "./flights.output";
 
-export function validateSearchParams(raw: any): FlightSearchInput {
-  const result = FlightSearchInputSchema.safeParse(raw);
-  if (!result.success) {
-    throw new Error(JSON.stringify(result.error.flatten()));
+export function validateSearchParams(raw: any) {
+  const parsed = FlightSearchInputSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(JSON.stringify(parsed.error.format(), null, 2));
   }
-  return result.data;
+  return parsed.data;
 }
 
-export function validateProviderResult(
-  raw: any
-): FlightSearchResult {
-  const result = FlightSearchResultSchema.safeParse(raw);
-  if (!result.success) {
-    console.error("Provider data failed validation:", result.error);
-    throw new Error("Provider returned malformed data");
+export function validateProviderResult(raw: any) {
+  const parsed = FlightSearchResultSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.error("Provider returned malformed data:", parsed.error.format());
+    throw new Error("Flight provider returned invalid data");
   }
-  return result.data;
+  return parsed.data;
 }
-``
