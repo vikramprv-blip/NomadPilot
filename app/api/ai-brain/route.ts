@@ -8,7 +8,7 @@ const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gem
 const FALLBACK_INTENT = {
   origin: '', destination: '', departureDate: '', returnDate: null,
   travelers: 1, preferences: { cabinClass: 'economy', maxBudget: null },
-  services: ['flight', 'hotel'], nationality: null, tripType: 'oneway', legs: [],
+  services: ['flight', 'hotel'], nationality: null, tripType: 'oneway', legs: [] as any[],
 };
 
 // Today is 2026-03-13 — used for resolving relative dates like "18 mar", "next Friday"
@@ -77,12 +77,12 @@ Travel request: "${userMessage}"`;
     // Ensure legs always has at least 1 entry
     if (!intent.legs || intent.legs.length === 0) {
       if (intent.origin && intent.destination) {
-        intent.legs = [{
+        intent.legs = ([{
           from:       intent.origin,
           to:         intent.destination,
           date:       intent.departureDate,
           cabinClass: intent.preferences?.cabinClass || 'economy',
-        }];
+        }] as any[]);
       }
     }
 
