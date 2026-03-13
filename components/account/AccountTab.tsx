@@ -140,6 +140,11 @@ export default function AccountTab({ currentPlan = 'free' }: { currentPlan?: str
     } finally {
       setLoading(null);
     }
+  }; // <--- THIS WAS MISSING OR PLACED INCORRECTLY
+
+  return (
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 0' }}>
+      {/* ... the rest of your code */}
   };
 
   return (
