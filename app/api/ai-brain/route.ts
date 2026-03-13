@@ -218,7 +218,7 @@ Request: "${userMessage}"`;
     }
 
     const raw    = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const intent = safeParseGeminiJSON(raw, {});
+    const intent: any = safeParseGeminiJSON(raw, {});
 
     // Ensure legs exist
     if (!intent.legs?.length && intent.origin && intent.destination) {
