@@ -13,19 +13,23 @@ function safeIntent(raw: any): TripIntent {
   const depDate     = raw?.departureDate || raw?.date || legs?.[0]?.date || '';
 
   return {
-    raw:           raw?.raw   || '',
+    raw:              raw?.raw   || '',
     origin,
     destination,
-    departureDate: depDate,
-    returnDate:    raw?.returnDate || raw?.return || null,
-    travelers:     Number(raw?.travelers) || 1,
-    budget:        raw?.budget    || undefined,
-    currency:      raw?.currency  || 'USD',
-    services:      raw?.services  || ['flight'],
-    tripType:      raw?.tripType  || (legs && legs.length > 1 ? 'multicity' : 'oneway'),
-    legs:          legs || (origin && destination ? [{ from: origin, to: destination, date: depDate, cabinClass: raw?.preferences?.cabinClass || 'economy' }] : []),
+    departureDate:    depDate,
+    returnDate:       raw?.returnDate || raw?.return || null,
+    travelers:        Number(raw?.travelers) || 1,
+    budget:           raw?.budget    || undefined,
+    currency:         raw?.currency  || 'USD',
+    services:         raw?.services  || ['flight'],
+    tripType:         raw?.tripType  || (legs && legs.length > 1 ? 'multicity' : 'oneway'),
+    legs:             legs || (origin && destination ? [{ from: origin, to: destination, date: depDate, cabinClass: raw?.preferences?.cabinClass || 'economy' }] : []),
+    hotelDestination: raw?.hotelDestination || null,
+    nights:           raw?.nights           || null,
+    nationality:      raw?.nationality      || raw?.constraints?.visaPassport || undefined,
     preferences: {
-      cabinClass: raw?.preferences?.cabinClass || raw?.cabinClass || 'economy',
+      cabinClass:  raw?.preferences?.cabinClass  || raw?.cabinClass  || 'economy',
+      hotelStars:  raw?.preferences?.hotelStars  || raw?.hotelStars  || null,
     },
     constraints: {
       visaPassport: raw?.constraints?.visaPassport || raw?.nationality || undefined,

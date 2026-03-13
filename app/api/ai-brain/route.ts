@@ -33,10 +33,16 @@ const CITY_TO_IATA: Record<string, string> = {
   rome:'FCO', fco:'FCO', milan:'MXP', mxp:'MXP', venice:'VCE', vce:'VCE',
   // UAE
   dubai:'DXB', dxb:'DXB', 'abu dhabi':'AUH', auh:'AUH', sharjah:'SHJ', shj:'SHJ',
-  // India
+  // India & South Asia
   delhi:'DEL', del:'DEL', 'new delhi':'DEL', mumbai:'BOM', bom:'BOM',
-  bangalore:'BLR', blr:'BLR', chennai:'MAA', maa:'MAA', kolkata:'CCU', ccu:'CCU',
-  hyderabad:'HYD', hyd:'HYD', goa:'GOI', goi:'GOI',
+  bangalore:'BLR', blr:'BLR', bengaluru:'BLR', chennai:'MAA', maa:'MAA',
+  kolkata:'CCU', ccu:'CCU', hyderabad:'HYD', hyd:'HYD', goa:'GOI', goi:'GOI',
+  pune:'PNQ', pnq:'PNQ', ahmedabad:'AMD', amd:'AMD', jaipur:'JAI',
+  islamabad:'ISB', isb:'ISB', lahore:'LHE', lhe:'LHE', karachi:'KHI', khi:'KHI',
+  colombo:'CMB', cmb:'CMB',
+  kathmandu:'KTM', ktm:'KTM',
+  dhaka:'DAC', dac:'DAC',
+  yangon:'RGN', rgn:'RGN', myanmar:'RGN', rangoon:'RGN',
   // USA
   'new york':'JFK', jfk:'JFK', nyc:'JFK', 'los angeles':'LAX', lax:'LAX',
   chicago:'ORD', ord:'ORD', miami:'MIA', mia:'MIA', 'san francisco':'SFO', sfo:'SFO',
@@ -51,13 +57,35 @@ const CITY_TO_IATA: Record<string, string> = {
   // Australia
   sydney:'SYD', syd:'SYD', melbourne:'MEL', mel:'MEL', brisbane:'BNE', bne:'BNE',
   perth:'PER', per:'PER',
+  // Extra Europe
+  vienna:'VIE', vie:'VIE',
+  zurich:'ZRH', zrh:'ZRH', geneva:'GVA', gva:'GVA',
+  lisbon:'LIS', lis:'LIS', porto:'OPO', opo:'OPO',
+  brussels:'BRU', bru:'BRU',
+  prague:'PRG', prg:'PRG', warsaw:'WAW', waw:'WAW', krakow:'KRK', krk:'KRK',
+  athens:'ATH', ath:'ATH',
+  budapest:'BUD', bud:'BUD', bucharest:'OTP', otp:'OTP',
+  sofia:'SOF', sof:'SOF', belgrade:'BEG', beg:'BEG',
+  riga:'RIX', rix:'RIX', tallinn:'TLL', tll:'TLL', vilnius:'VNO', vno:'VNO',
+  kyiv:'KBP', kbp:'KBP', tbilisi:'TBS', tbs:'TBS',
+  yerevan:'EVN', evn:'EVN', baku:'GYD', gyd:'GYD',
+  tehran:'IKA', ika:'IKA',
   // Canada
   toronto:'YYZ', yyz:'YYZ', vancouver:'YVR', yvr:'YVR', montreal:'YUL', yul:'YUL',
+  calgary:'YYC', yyc:'YYC', ottawa:'YOW', yow:'YOW',
   // Middle East
   doha:'DOH', doh:'DOH', riyadh:'RUH', ruh:'RUH', kuwait:'KWI', kwi:'KWI',
   muscat:'MCT', mct:'MCT', amman:'AMM', amm:'AMM',
   // Africa
-  nairobi:'NBO', nbo:'NBO', 'cape town':'CPT', cpt:'CPT', johannesburg:'JNB', jnb:'JNB',
+  nairobi:'NBO', nbo:'NBO',
+  'cape town':'CPT', capetown:'CPT', cpt:'CPT',
+  johannesburg:'JNB', jnb:'JNB',
+  lagos:'LOS', los:'LOS', accra:'ACC', acc:'ACC',
+  casablanca:'CMN', cmn:'CMN', marrakech:'RAK', rak:'RAK',
+  cairo:'CAI', cai:'CAI',
+  addis:'ADD', 'addis ababa':'ADD', add:'ADD',
+  tunis:'TUN', tun:'TUN', algiers:'ALG',
+  dakar:'DKR', dkr:'DKR', kigali:'KGL', kgl:'KGL',
   cairo:'CAI', cai:'CAI', casablanca:'CMN', cmn:'CMN', lagos:'LOS', los:'LOS',
   // Others
   istanbul:'IST', ist:'IST', oslo:'OSL', osl:'OSL', stockholm:'ARN', arn:'ARN',
@@ -87,13 +115,55 @@ function resolveDate(raw: string): string {
   // Already YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
 
-  const year = new Date().getFullYear();
+  const now  = new Date();
+  const year = now.getFullYear();
+  const nextYear = year + 1;
+
+  // Relative: "today", "tomorrow"
+  if (raw === 'today') return now.toISOString().slice(0, 10);
+  if (raw === 'tomorrow') {
+    const d = new Date(now); d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // "next friday", "next monday", "this saturday", "this weekend"
+  const DAYS: Record<string,number> = { sunday:0, sun:0, monday:1, mon:1, tuesday:2, tue:2,
+    wednesday:3, wed:3, thursday:4, thu:4, friday:5, fri:5, saturday:6, sat:6, weekend:6 };
+  const nextDay = raw.match(/^(?:next|this)\s+([a-z]+)$/);
+  if (nextDay && DAYS[nextDay[1]] !== undefined) {
+    const target = DAYS[nextDay[1]];
+    const d = new Date(now);
+    const diff = (target - d.getDay() + 7) % 7 || 7;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // "in 2 weeks", "in 10 days", "in 3 months"
+  const inX = raw.match(/^in\s+(\d+)\s+(day|days|week|weeks|month|months)$/);
+  if (inX) {
+    const n = parseInt(inX[1]);
+    const unit = inX[2];
+    const d = new Date(now);
+    if (unit.startsWith('day'))   d.setDate(d.getDate() + n);
+    if (unit.startsWith('week'))  d.setDate(d.getDate() + n * 7);
+    if (unit.startsWith('month')) d.setMonth(d.getMonth() + n);
+    return d.toISOString().slice(0, 10);
+  }
 
   // "18 mar", "mar 18", "18 march", "march 18"
   const m1 = raw.match(/^(\d{1,2})\s+([a-z]+)$/);
   const m2 = raw.match(/^([a-z]+)\s+(\d{1,2})$/);
-  if (m1 && MONTHS[m1[2]]) return `${year}-${MONTHS[m1[2]]}-${m1[1].padStart(2,'0')}`;
-  if (m2 && MONTHS[m2[1]]) return `${year}-${MONTHS[m2[1]]}-${m2[2].padStart(2,'0')}`;
+  if (m1 && MONTHS[m1[2]]) {
+    // If month already passed this year, assume next year
+    const mo = MONTHS[m1[2]]; const dy = m1[1].padStart(2,'0');
+    const candidate = `${year}-${mo}-${dy}`;
+    return candidate < now.toISOString().slice(0,10) ? `${nextYear}-${mo}-${dy}` : candidate;
+  }
+  if (m2 && MONTHS[m2[1]]) {
+    const mo = MONTHS[m2[1]]; const dy = m2[2].padStart(2,'0');
+    const candidate = `${year}-${mo}-${dy}`;
+    return candidate < now.toISOString().slice(0,10) ? `${nextYear}-${mo}-${dy}` : candidate;
+  }
 
   // "18/3", "18/03", "3/18"
   const m3 = raw.match(/^(\d{1,2})\/(\d{1,2})$/);
@@ -212,14 +282,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: (limit as any).reason, retryAfter: (limit as any).retryAfter }, { status: 429 });
     }
 
-    const prompt = `Today is ${TODAY}. Parse this travel request into JSON.
+    const prompt = `Today is ${TODAY}. Parse this travel request into JSON. Return ONLY valid JSON, no markdown.
 
-Common city → IATA: Paris=CDG, Billund=BLL, Malaga=AGP, London=LHR, Dubai=DXB, Delhi=DEL, NYC=JFK, Singapore=SIN, Bangkok=BKK, Tokyo=NRT, Sydney=SYD, Mumbai=BOM, Rome=FCO, Barcelona=BCN, Madrid=MAD, Amsterdam=AMS, Frankfurt=FRA, Istanbul=IST, Cairo=CAI, Nairobi=NBO.
+IATA codes: Paris=CDG, London=LHR, Dubai=DXB, Delhi=DEL, NYC=JFK, Singapore=SIN, Bangkok=BKK, Tokyo=NRT, Sydney=SYD, Mumbai=BOM, Rome=FCO, Barcelona=BCN, Madrid=MAD, Amsterdam=AMS, Frankfurt=FRA, Istanbul=IST, Cairo=CAI, Nairobi=NBO, Toronto=YYZ, Vienna=VIE, Zurich=ZRH, Lisbon=LIS, Prague=PRG, Warsaw=WAW, Athens=ATH, Budapest=BUD, Colombo=CMB, Kathmandu=KTM, Yangon=RGN, Casablanca=CMN, Lagos=LOS.
 
-Dates like "18 mar" = "${new Date().getFullYear()}-03-18". "2 person" = travelers:2. "business class" = cabinClass:"business".
+Rules:
+- Dates: "18 mar"→"${new Date().getFullYear()}-03-18", "next friday"→nearest future Friday, "in 2 weeks"→+14 days from today
+- Services: include "hotel" if any accommodation mentioned, "car" if car/rental mentioned
+- hotelDestination: CITY NAME (not IATA) if hotel city differs from flight destination (e.g. "hotel in Estepona" → hotelDestination:"Estepona")
+- nights: integer if number of nights mentioned
+- hotelStars: 5 if "luxury"/"5-star", 4 if "upscale"/"4-star", else null
+- nationality: passenger's nationality adjective if mentioned (e.g. "Danish", "Indian")
+- Multi-city: split into legs array, set tripType:"multicity"
 
-For multi-leg trips, fill the legs array. Return ONLY JSON, no markdown:
-{"origin":"BLL","destination":"AGP","departureDate":"2026-03-18","returnDate":null,"travelers":2,"tripType":"multicity","services":["flight"],"nationality":null,"preferences":{"cabinClass":"business"},"legs":[{"from":"BLL","to":"CDG","date":"2026-03-18","cabinClass":"business"},{"from":"CDG","to":"AGP","date":"2026-03-20","cabinClass":"business"}]}
+Return JSON:
+{"origin":"LHR","destination":"JFK","departureDate":"2026-03-20","returnDate":"2026-03-25","travelers":1,"tripType":"return","services":["flight","hotel"],"nationality":"Danish","hotelDestination":null,"nights":null,"hotelStars":null,"currency":"DKK","preferences":{"cabinClass":"first"},"legs":[{"from":"LHR","to":"JFK","date":"2026-03-20","cabinClass":"first"}]}
 
 Request: "${userMessage}"`;
 
@@ -256,16 +333,24 @@ Request: "${userMessage}"`;
 
     // Merge with regex result as fallback for missing fields
     const final = {
-      origin:        intent.origin        || regexResult?.origin        || '',
-      destination:   intent.destination   || regexResult?.destination   || '',
-      departureDate: intent.departureDate || regexResult?.departureDate || '',
-      returnDate:    intent.returnDate    ?? regexResult?.returnDate    ?? null,
-      travelers:     intent.travelers     || regexResult?.travelers     || 1,
-      tripType:      intent.tripType      || regexResult?.tripType      || 'oneway',
-      services:      intent.services      || regexResult?.services      || ['flight'],
-      nationality:   intent.nationality   || regexResult?.nationality   || null,
-      preferences:   intent.preferences   || regexResult?.preferences   || { cabinClass: 'economy' },
-      legs:          intent.legs          || regexResult?.legs          || [],
+      origin:           intent.origin           || regexResult?.origin           || '',
+      destination:      intent.destination      || regexResult?.destination      || '',
+      departureDate:    intent.departureDate    || regexResult?.departureDate    || '',
+      returnDate:       intent.returnDate       ?? regexResult?.returnDate       ?? null,
+      travelers:        intent.travelers        || regexResult?.travelers        || 1,
+      tripType:         intent.tripType         || regexResult?.tripType         || 'oneway',
+      services:         intent.services         || regexResult?.services         || ['flight'],
+      nationality:      intent.nationality      || regexResult?.nationality      || null,
+      hotelDestination: intent.hotelDestination || regexResult?.hotelDestination || null,
+      nights:           intent.nights           || regexResult?.nights           || null,
+      hotelStars:       intent.hotelStars       || regexResult?.hotelStars       || null,
+      currency:         intent.currency         || regexResult?.currency         || null,
+      preferences: {
+        ...(regexResult?.preferences || {}),
+        ...(intent.preferences || {}),
+        hotelStars: intent.hotelStars || regexResult?.preferences?.hotelStars || null,
+      },
+      legs:             intent.legs             || regexResult?.legs             || [],
     };
 
     return NextResponse.json(final);

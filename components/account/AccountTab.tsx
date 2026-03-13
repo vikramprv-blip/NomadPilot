@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const PLANS = [
   {
@@ -60,9 +60,68 @@ const FEATURES = [
   ]},
 ];
 
+function PriceAlertsPanel() {
+  const [alerts, setAlerts]   = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/price-alert')
+      .then(r => r.ok ? r.json() : { alerts: [] })
+      .then(d => setAlerts(d.alerts || []))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const deleteAlert = async (id: string) => {
+    await fetch(`/api/price-alert?id=${id}`, { method: 'DELETE' });
+    setAlerts(prev => prev.filter(a => a.id !== id));
+  };
+
+  if (loading) return <div style={{ padding: 20, textAlign:'center', color:'var(--text-dim)' }}>Loading alerts...</div>;
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>🔔 Price Alerts</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>We'll notify you by email when flight prices drop below your target.</p>
+      </div>
+      {alerts.length === 0 ? (
+        <div style={{ padding: '32px 24px', textAlign:'center', borderRadius: 10, background:'var(--navy-mid)', border:'1px dashed var(--navy-border)' }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>🔔</div>
+          <p style={{ color:'var(--text-dim)', fontSize: 14 }}>No price alerts yet. Search for a flight and click "Alert me if cheaper" to start tracking prices.</p>
+        </div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap: 10 }}>
+          {alerts.map(a => (
+            <div key={a.id} style={{ padding:'14px 18px', borderRadius:10, background:'var(--navy-mid)', border:'1px solid var(--navy-border)', display:'flex', justifyContent:'space-between', alignItems:'center', gap: 12, flexWrap:'wrap' }}>
+              <div>
+                <div style={{ fontWeight:700, fontSize:14, marginBottom:3 }}>{a.origin} → {a.destination}</div>
+                <div style={{ fontSize:12, color:'var(--text-dim)' }}>
+                  {a.date}
+                  {a.target_price && <span style={{ marginLeft: 10, color:'var(--gold)' }}>Target: {a.currency}{Number(a.target_price).toLocaleString()}</span>}
+                  {a.last_price && <span style={{ marginLeft: 10 }}>Last seen: {a.currency}{Number(a.last_price).toLocaleString()}</span>}
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <span style={{ fontSize:10, padding:'3px 8px', borderRadius:20, background: a.active ? 'rgba(45,212,160,0.12)' : 'rgba(255,255,255,0.06)', color: a.active ? 'var(--green)' : 'var(--text-muted)', fontWeight:700 }}>
+                  {a.triggered ? '✓ Triggered' : a.active ? '● Active' : '○ Paused'}
+                </span>
+                <button onClick={() => deleteAlert(a.id)}
+                  style={{ background:'none', border:'1px solid var(--navy-border)', borderRadius:6, color:'var(--text-muted)', cursor:'pointer', fontSize:13, padding:'4px 10px' }}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AccountTab({ currentPlan = 'free' }: { currentPlan?: string }) {
-  const [billing, setBilling] = useState<'monthly'|'annual'>('monthly');
-  const [loading, setLoading] = useState<string|null>(null);
+  const [billing, setBilling]   = useState<'monthly'|'annual'>('monthly');
+  const [loading, setLoading]   = useState<string|null>(null);
+  const [section, setSection]   = useState<'plans'|'alerts'>('plans');
 
   const handleSubscribe = async (planId: string, provider: 'stripe'|'paypal') => {
     if (planId === 'free') return;
@@ -88,9 +147,18 @@ export default function AccountTab({ currentPlan = 'free' }: { currentPlan?: str
       <div style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 30, fontWeight: 700, marginBottom: 6 }}>Account & Plans</h2>
         <p style={{ color: 'var(--text-dim)', fontSize: 15 }}>Choose the plan that fits your travel needs</p>
+        <div style={{ display:'flex', gap:8, marginTop: 16 }}>
+          {[{id:'plans',label:'💳 Plans & Billing'},{id:'alerts',label:'🔔 Price Alerts'}].map(s => (
+            <button key={s.id} onClick={() => setSection(s.id as any)}
+              style={{ padding:'7px 16px', borderRadius:7, border:`1px solid ${section===s.id?'var(--gold)':'var(--navy-border)'}`, background:section===s.id?'rgba(232,160,32,0.12)':'transparent', color:section===s.id?'var(--gold)':'var(--text-dim)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'DM Sans' }}>
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Billing toggle */}
+      {section === 'alerts' ? <PriceAlertsPanel /> : (
+      <>{/* Billing toggle */}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 32 }}>
         <div style={{ display: 'inline-flex', background: 'var(--navy-mid)', border: '1px solid var(--navy-border)', borderRadius: 10, padding: 4, gap: 4 }}>
           {(['monthly','annual'] as const).map(b => (
@@ -180,6 +248,7 @@ export default function AccountTab({ currentPlan = 'free' }: { currentPlan?: str
         <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, marginTop: 20 }}>
           All plans include a 7-day free trial · Cancel anytime · Payments via Stripe & PayPal
         </p>
+      </>)}
       </div>
     </div>
   );

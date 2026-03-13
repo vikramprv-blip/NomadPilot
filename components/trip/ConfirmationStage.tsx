@@ -122,6 +122,55 @@ function fmtDuration(dur: string) {
   return dur.replace('PT','').replace('H','h ').replace('M','m').trim();
 }
 
+// ─── Price Alert Button ───────────────────────────────────────────────────────
+function PriceAlertButton({ flight, intent }: { flight: FlightOption; intent: TripIntent }) {
+  const [status, setStatus] = useState<'idle'|'loading'|'set'|'error'>('idle');
+  const [targetPrice, setTargetPrice] = useState('');
+  const [showInput, setShowInput] = useState(false);
+
+  const setAlert = async () => {
+    setStatus('loading');
+    try {
+      const res = await fetch('/api/price-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin:      flight.origin,
+          destination: flight.destination,
+          date:        intent.departureDate,
+          targetPrice: targetPrice ? Number(targetPrice) : flight.price * 0.9,
+          currency:    intent.currency || flight.currency || 'USD',
+        }),
+      });
+      if (res.ok) { setStatus('set'); setShowInput(false); }
+      else { const e = await res.json(); if (e.error?.includes('Unauthorized')) setStatus('error'); else setStatus('set'); }
+    } catch { setStatus('error'); }
+  };
+
+  if (status === 'set') return (
+    <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>🔔 Alert set — we'll notify you if price drops</span>
+  );
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {showInput && (
+        <input
+          type="number" placeholder={`Target price (now ${flight.price})`}
+          value={targetPrice} onChange={e => setTargetPrice(e.target.value)}
+          style={{ width: 140, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--navy-border)', background: 'var(--navy-light)', color: 'var(--text)', fontSize: 12, fontFamily: 'DM Sans' }}
+        />
+      )}
+      <button
+        onClick={() => showInput ? setAlert() : setShowInput(true)}
+        disabled={status === 'loading'}
+        style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid rgba(45,212,160,0.3)', background: 'rgba(45,212,160,0.08)', color: 'var(--green)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'DM Sans', whiteSpace: 'nowrap' }}>
+        {status === 'loading' ? '...' : showInput ? '🔔 Confirm Alert' : '🔔 Alert me if cheaper'}
+      </button>
+      {showInput && <button onClick={() => setShowInput(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>✕</button>}
+    </div>
+  );
+}
+
 // ─── Single flight row ────────────────────────────────────────────────────────
 function FlightRow({ flight, intent, rank, onBook }: {
   flight: FlightOption & { isPlaceholder?: boolean };
@@ -251,9 +300,12 @@ function FlightRow({ flight, intent, rank, onBook }: {
               </button>
             ))}
           </div>
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-            ✓ Booking saved to My Trips automatically when you click a partner.
-          </p>
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>
+              ✓ Booking saved to My Trips automatically when you click a partner.
+            </p>
+            <PriceAlertButton flight={flight} intent={intent} />
+          </div>
         </div>
       )}
     </div>

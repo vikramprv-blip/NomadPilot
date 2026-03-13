@@ -8,19 +8,22 @@ export interface TripLeg {
 }
 
 export interface TripIntent {
-  raw:          string;
-  destination:  string;
-  origin:       string;
-  departureDate: string;
-  returnDate:   string | null;
-  budget?:      number;
-  currency?:    string;
-  travelers:    number;
-  tripType?:    'return' | 'oneway' | 'multicity';
-  legs?:        TripLeg[];   // multi-city legs
-  preferences:  TripPreferences;
-  constraints:  TripConstraints;
-  services?:    string[];
+  raw:              string;
+  destination:      string;
+  origin:           string;
+  departureDate:    string;
+  returnDate:       string | null;
+  budget?:          number;
+  currency?:        string;
+  travelers:        number;
+  tripType?:        'return' | 'oneway' | 'multicity';
+  legs?:            TripLeg[];       // multi-city legs
+  hotelDestination?: string | null;  // separate hotel city (e.g. Estepona vs Malaga airport)
+  nights?:          number | null;   // number of hotel nights
+  nationality?:     string;          // for visa checking
+  preferences:      TripPreferences;
+  constraints:      TripConstraints;
+  services?:        string[];
 }
 
 export interface TripPreferences {
