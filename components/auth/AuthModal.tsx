@@ -5,24 +5,18 @@ import { createClient } from '@/lib/supabase/client';
 type Mode = 'signin' | 'signup' | 'forgot';
 
 // Password strength checker
-// Password rules — all must pass before signup is allowed
-const PASSWORD_RULES = [
-  { id: 'length',    label: 'At least 8 characters',           test: (p: string) => p.length >= 8 },
-  { id: 'uppercase', label: 'One uppercase letter (A–Z)',       test: (p: string) => /[A-Z]/.test(p) },
-  { id: 'lowercase', label: 'One lowercase letter (a–z)',       test: (p: string) => /[a-z]/.test(p) },
-  { id: 'number',    label: 'One number (0–9)',                 test: (p: string) => /[0-9]/.test(p) },
-  { id: 'special',   label: 'One special character (!@#$...)',  test: (p: string) => /[^A-Za-z0-9]/.test(p) },
-];
-
-function passwordStrength(p: string): { score: number; label: string; color: string; rules: { id: string; label: string; pass: boolean }[] } {
-  if (!p) return { score: 0, label: '', color: '', rules: PASSWORD_RULES.map(r => ({ ...r, pass: false })) };
-  const rules = PASSWORD_RULES.map(r => ({ ...r, pass: r.test(p) }));
-  const score = rules.filter(r => r.pass).length;
-  if (score <= 1) return { score, label: 'Too weak', color: '#ef4444', rules };
-  if (score <= 2) return { score, label: 'Weak',     color: '#f97316', rules };
-  if (score <= 3) return { score, label: 'Fair',     color: '#f59e0b', rules };
-  if (score <= 4) return { score, label: 'Good',     color: '#3b82f6', rules };
-  return              { score, label: 'Strong',   color: '#2dd4a0', rules };
+function passwordStrength(p: string): { score: number; label: string; color: string } {
+  if (!p) return { score: 0, label: '', color: '' };
+  let score = 0;
+  if (p.length >= 8)  score++;
+  if (p.length >= 12) score++;
+  if (/[A-Z]/.test(p)) score++;
+  if (/[0-9]/.test(p)) score++;
+  if (/[^A-Za-z0-9]/.test(p)) score++;
+  if (score <= 1) return { score, label: 'Weak',   color: '#ef4444' };
+  if (score <= 3) return { score, label: 'Fair',   color: '#f59e0b' };
+  if (score <= 4) return { score, label: 'Good',   color: '#3b82f6' };
+  return              { score, label: 'Strong', color: '#2dd4a0' };
 }
 
 export default function AuthModal({ onClose, onSuccess }: {
@@ -46,11 +40,7 @@ export default function AuthModal({ onClose, onSuccess }: {
     if (!email || !email.includes('@')) { setError('Valid email required'); return false; }
     if (mode !== 'forgot' && !password) { setError('Password required'); return false; }
     if (mode === 'signup') {
-      const failedRules = strength.rules.filter(r => !r.pass);
-      if (failedRules.length > 0) {
-        setError(`Password requirements not met: ${failedRules.map(r => r.label).join(', ')}`);
-        return false;
-      }
+      if (password.length < 8) { setError('Password must be at least 8 characters'); return false; }
       if (password !== confirmPass) { setError('Passwords do not match'); return false; }
     }
     return true;
@@ -72,13 +62,7 @@ export default function AuthModal({ onClose, onSuccess }: {
           setError('An account with this email already exists. Please sign in.');
           return;
         }
-        // Fire welcome email (non-blocking)
-        fetch('/api/welcome', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim().toLowerCase(), name: name.trim() }),
-        }).catch(() => {});
-        setMessage('✓ Account created! Check your email to confirm your address, then sign in.');
+        setMessage('✓ Account created! Check your email to confirm, then sign in.');
         setMode('signin');
 
       } else if (mode === 'signin') {
@@ -217,26 +201,15 @@ export default function AuthModal({ onClose, onSuccess }: {
               {/* Password strength meter — only on signup */}
               {mode === 'signup' && password && (
                 <div style={{ marginTop:8 }}>
-                  {/* Strength bar */}
-                  <div style={{ display:'flex', gap:3, marginBottom:6 }}>
+                  <div style={{ display:'flex', gap:4, marginBottom:4 }}>
                     {[1,2,3,4,5].map(i => (
-                      <div key={i} style={{ flex:1, height:3, borderRadius:2, background: i <= strength.score ? strength.color : 'var(--navy-border)', transition:'background 0.3s' }} />
+                      <div key={i} style={{ flex:1, height:3, borderRadius:2, background: i <= strength.score ? strength.color : 'var(--navy-border)', transition:'background 0.2s' }} />
                     ))}
                   </div>
-                  <span style={{ fontSize:11, color:strength.color, fontWeight:700 }}>{strength.label}</span>
-                  {/* Rule checklist */}
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px 12px', marginTop:8 }}>
-                    {strength.rules.map(r => (
-                      <div key={r.id} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11 }}>
-                        <span style={{ color: r.pass ? '#2dd4a0' : '#ef4444', fontSize:10, flexShrink:0 }}>
-                          {r.pass ? '✓' : '✗'}
-                        </span>
-                        <span style={{ color: r.pass ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.35)', textDecoration: r.pass ? 'line-through' : 'none' }}>
-                          {r.label}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  <span style={{ fontSize:11, color:strength.color, fontWeight:600 }}>{strength.label}</span>
+                  {strength.score < 3 && (
+                    <span style={{ fontSize:11, color:'var(--text-muted)', marginLeft:8 }}>Add uppercase, numbers or symbols</span>
+                  )}
                 </div>
               )}
             </div>
@@ -274,7 +247,7 @@ export default function AuthModal({ onClose, onSuccess }: {
         {message && <p style={{ color:'var(--green)', fontSize:13, marginTop:12, lineHeight:1.4 }}>{message}</p>}
 
         <button className="btn btn-gold btn-lg" onClick={handle}
-          disabled={loading || !email || (mode !== 'forgot' && !password) || (mode === 'signup' && (strength.score < 5 || password !== confirmPass))}
+          disabled={loading || !email || (mode !== 'forgot' && !password) || (mode === 'signup' && password !== confirmPass)}
           style={{ width:'100%', justifyContent:'center', marginTop:18 }}>
           {loading ? <span className="spin">◌</span> :
            mode === 'signin'  ? 'Sign In' :
