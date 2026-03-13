@@ -1,200 +1,254 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkGeminiRateLimit } from '@/lib/ratelimit/gemini';
-import { getCached, setCached } from '@/lib/ratelimit/cache';
 import { safeParseGeminiJSON } from '@/lib/ratelimit/parseJSON';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const TODAY       = new Date().toISOString().slice(0, 10); // always real today
 
-const FALLBACK_INTENT = {
-  origin: '', destination: '', departureDate: '', returnDate: null,
-  travelers: 1, preferences: { cabinClass: 'economy', maxBudget: null },
-  services: ['flight', 'hotel'], nationality: null, tripType: 'oneway', legs: [] as any[],
+// ── IATA resolver ─────────────────────────────────────────────────────────────
+const CITY_TO_IATA: Record<string, string> = {
+  // Denmark
+  billund:'BLL', bll:'BLL', copenhagen:'CPH', cph:'CPH', aarhus:'AAL', aal:'AAL',
+  // France
+  paris:'CDG', cdg:'CDG', ory:'ORY', nice:'NCE', nce:'NCE', lyon:'LYS', lys:'LYS', marseille:'MRS',
+  par:'CDG',
+  // Spain
+  malaga:'AGP', agp:'AGP', barcelona:'BCN', bcn:'BCN', madrid:'MAD', mad:'MAD',
+  seville:'SVQ', svq:'SVQ', valencia:'VLC', vlc:'VLC', ibiza:'IBZ', ibz:'IBZ',
+  // UK
+  london:'LHR', lhr:'LHR', heathrow:'LHR', gatwick:'LGW', lgw:'LGW', ltn:'LTN',
+  manchester:'MAN', man:'MAN', edinburgh:'EDI', edi:'EDI', birmingham:'BHX', lon:'LHR',
+  // Germany
+  frankfurt:'FRA', fra:'FRA', munich:'MUC', muc:'MUC', berlin:'BER', ber:'BER',
+  hamburg:'HAM', ham:'HAM', dusseldorf:'DUS', dus:'DUS',
+  // Netherlands
+  amsterdam:'AMS', ams:'AMS',
+  // Switzerland
+  zurich:'ZRH', zrh:'ZRH', geneva:'GVA', gva:'GVA',
+  // Italy
+  rome:'FCO', fco:'FCO', milan:'MXP', mxp:'MXP', venice:'VCE', vce:'VCE',
+  // UAE
+  dubai:'DXB', dxb:'DXB', 'abu dhabi':'AUH', auh:'AUH', sharjah:'SHJ', shj:'SHJ',
+  // India
+  delhi:'DEL', del:'DEL', 'new delhi':'DEL', mumbai:'BOM', bom:'BOM',
+  bangalore:'BLR', blr:'BLR', chennai:'MAA', maa:'MAA', kolkata:'CCU', ccu:'CCU',
+  hyderabad:'HYD', hyd:'HYD', goa:'GOI', goi:'GOI',
+  // USA
+  'new york':'JFK', jfk:'JFK', nyc:'JFK', 'los angeles':'LAX', lax:'LAX',
+  chicago:'ORD', ord:'ORD', miami:'MIA', mia:'MIA', 'san francisco':'SFO', sfo:'SFO',
+  // Southeast Asia
+  singapore:'SIN', sin:'SIN', bangkok:'BKK', bkk:'BKK', bali:'DPS', dps:'DPS',
+  jakarta:'CGK', cgk:'CGK', 'kuala lumpur':'KUL', kul:'KUL', 'ho chi minh':'SGN', sgn:'SGN',
+  hanoi:'HAN', han:'HAN', manila:'MNL', mnl:'MNL', phuket:'HKT', hkt:'HKT',
+  // East Asia
+  tokyo:'NRT', nrt:'NRT', osaka:'KIX', kix:'KIX', 'hong kong':'HKG', hkg:'HKG',
+  seoul:'ICN', icn:'ICN', taipei:'TPE', tpe:'TPE', beijing:'PEK', pek:'PEK',
+  shanghai:'PVG', pvg:'PVG',
+  // Australia
+  sydney:'SYD', syd:'SYD', melbourne:'MEL', mel:'MEL', brisbane:'BNE', bne:'BNE',
+  perth:'PER', per:'PER',
+  // Canada
+  toronto:'YYZ', yyz:'YYZ', vancouver:'YVR', yvr:'YVR', montreal:'YUL', yul:'YUL',
+  // Middle East
+  doha:'DOH', doh:'DOH', riyadh:'RUH', ruh:'RUH', kuwait:'KWI', kwi:'KWI',
+  muscat:'MCT', mct:'MCT', amman:'AMM', amm:'AMM',
+  // Africa
+  nairobi:'NBO', nbo:'NBO', 'cape town':'CPT', cpt:'CPT', johannesburg:'JNB', jnb:'JNB',
+  cairo:'CAI', cai:'CAI', casablanca:'CMN', cmn:'CMN', lagos:'LOS', los:'LOS',
+  // Others
+  istanbul:'IST', ist:'IST', oslo:'OSL', osl:'OSL', stockholm:'ARN', arn:'ARN',
+  helsinki:'HEL', hel:'HEL', brussels:'BRU', bru:'BRU', vienna:'VIE', vie:'VIE',
+  lisbon:'LIS', lis:'LIS', athens:'ATH', ath:'ATH', warsaw:'WAW', waw:'WAW',
+  prague:'PRG', prg:'PRG', budapest:'BUD', bud:'BUD',
+  'mexico city':'MEX', mex:'MEX', 'sao paulo':'GRU', gru:'GRU',
+  'buenos aires':'EZE', eze:'EZE', santiago:'SCL', scl:'SCL', lima:'LIM', lim:'LIM',
 };
 
-
-// Pre-process user input to expand common short forms before sending to Gemini
-function normalizeQuery(q: string): string {
-  return q
-    // Common city shorthand → full name (Gemini handles full names better)
-    .replace(/\bpar\b/gi, 'Paris')
-    .replace(/\bbll\b/gi, 'Billund')
-    .replace(/\bagp\b/gi, 'Malaga')
-    .replace(/\blhr\b/gi, 'London')
-    .replace(/\blon\b/gi, 'London')
-    .replace(/\bdxb\b/gi, 'Dubai')
-    .replace(/\bdel\b/gi, 'Delhi')
-    .replace(/\bjfk\b/gi, 'New York')
-    .replace(/\bnyc\b/gi, 'New York')
-    .replace(/\bsin\b/gi, 'Singapore')
-    .replace(/\bbkk\b/gi, 'Bangkok')
-    .replace(/\bsyd\b/gi, 'Sydney')
-    .replace(/\bmel\b/gi, 'Melbourne')
-    .replace(/\bhkg\b/gi, 'Hong Kong')
-    .replace(/\bnrt\b/gi, 'Tokyo')
-    .replace(/\bfra\b/gi, 'Frankfurt')
-    .replace(/\bams\b/gi, 'Amsterdam')
-    .replace(/\bbcn\b/gi, 'Barcelona')
-    .replace(/\bmad\b/gi, 'Madrid')
-    .replace(/\bfco\b/gi, 'Rome')
-    .replace(/\bist\b/gi, 'Istanbul')
-    .replace(/\bcph\b/gi, 'Copenhagen')
-    .replace(/\bosl\b/gi, 'Oslo')
-    .replace(/\barn\b/gi, 'Stockholm')
-    .replace(/\bmuc\b/gi, 'Munich')
-    .replace(/\bzrh\b/gi, 'Zurich')
-    .replace(/\bdoh\b/gi, 'Doha')
-    .replace(/\bauh\b/gi, 'Abu Dhabi')
-    .replace(/\bkul\b/gi, 'Kuala Lumpur')
-    .replace(/\bdps\b/gi, 'Bali')
-    .replace(/\bnbo\b/gi, 'Nairobi')
-    .replace(/\bcpt\b/gi, 'Cape Town')
-    .replace(/\bjnb\b/gi, 'Johannesburg')
-    .replace(/\bcai\b/gi, 'Cairo')
-    .replace(/\bbom\b/gi, 'Mumbai')
-    .replace(/\bblr\b/gi, 'Bangalore')
-    // Date normalizations
-    .replace(/\b(\d{1,2})\s*mar\b/gi, '$1 March')
-    .replace(/\b(\d{1,2})\s*apr\b/gi, '$1 April')
-    .replace(/\b(\d{1,2})\s*may\b/gi, '$1 May')
-    .replace(/\b(\d{1,2})\s*jun\b/gi, '$1 June')
-    .replace(/\b(\d{1,2})\s*jul\b/gi, '$1 July')
-    .replace(/\b(\d{1,2})\s*aug\b/gi, '$1 August')
-    .replace(/\b(\d{1,2})\s*sep\b/gi, '$1 September')
-    .replace(/\b(\d{1,2})\s*oct\b/gi, '$1 October')
-    .replace(/\b(\d{1,2})\s*nov\b/gi, '$1 November')
-    .replace(/\b(\d{1,2})\s*dec\b/gi, '$1 December')
-    .replace(/\b(\d{1,2})\s*jan\b/gi, '$1 January')
-    .replace(/\b(\d{1,2})\s*feb\b/gi, '$1 February')
-    // People
-    .replace(/\b(\d+)\s*person\b/gi, '$1 people')
-    .replace(/\bpax\b/gi, 'passengers');
+function resolveIATA(raw: string): string {
+  const key = raw.toLowerCase().trim().replace(/\s+/g, ' ');
+  return CITY_TO_IATA[key] || raw.toUpperCase();
 }
 
-// Today is 2026-03-13 — used for resolving relative dates like "18 mar", "next Friday"
-const TODAY = '2026-03-13';
+// ── Date resolver ─────────────────────────────────────────────────────────────
+const MONTHS: Record<string, string> = {
+  jan:'01', january:'01', feb:'02', february:'02', mar:'03', march:'03',
+  apr:'04', april:'04', may:'05', jun:'06', june:'06', jul:'07', july:'07',
+  aug:'08', august:'08', sep:'09', sept:'09', september:'09', oct:'10', october:'10',
+  nov:'11', november:'11', dec:'12', december:'12',
+};
 
+function resolveDate(raw: string): string {
+  if (!raw) return '';
+  raw = raw.trim().toLowerCase();
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const year = new Date().getFullYear();
+
+  // "18 mar", "mar 18", "18 march", "march 18"
+  const m1 = raw.match(/^(\d{1,2})\s+([a-z]+)$/);
+  const m2 = raw.match(/^([a-z]+)\s+(\d{1,2})$/);
+  if (m1 && MONTHS[m1[2]]) return `${year}-${MONTHS[m1[2]]}-${m1[1].padStart(2,'0')}`;
+  if (m2 && MONTHS[m2[1]]) return `${year}-${MONTHS[m2[1]]}-${m2[2].padStart(2,'0')}`;
+
+  // "18/3", "18/03", "3/18"
+  const m3 = raw.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m3) return `${year}-${m3[2].padStart(2,'0')}-${m3[1].padStart(2,'0')}`;
+
+  return '';
+}
+
+// ── Regex-based intent parser (zero AI, always works) ─────────────────────────
+function regexParseIntent(input: string): any | null {
+  const q = input.toLowerCase();
+
+  // Split into legs by comma/semicolon: "BLL to PAR 18 mar, PAR to AGP 20 mar"
+  const legPattern = /([a-z][a-z ]{1,20})\s+(?:to|->|→|-)\s+([a-z][a-z ]{1,20})\s+(\d{1,2}\s*[a-z]+|\d{4}-\d{2}-\d{2})/g;
+  const legs: any[] = [];
+  let match;
+  while ((match = legPattern.exec(q)) !== null) {
+    const from = resolveIATA(match[1].trim());
+    const to   = resolveIATA(match[2].trim());
+    const date = resolveDate(match[3].trim());
+    if (from && to) legs.push({ from, to, date });
+  }
+
+  // Single leg: "billund to paris" or "paris to malaga"
+  if (legs.length === 0) {
+    const single = q.match(/([a-z][a-z ]{1,20})\s+(?:to|->|→|-)\s+([a-z][a-z ]{1,20})/);
+    if (single) {
+      const from = resolveIATA(single[1].trim());
+      const to   = resolveIATA(single[2].trim());
+      legs.push({ from, to, date: '' });
+    }
+  }
+
+  if (legs.length === 0) return null;
+
+  // Travelers: "2 people", "2 person", "2 passengers", "for 2"
+  const travMatch = q.match(/(\d+)\s*(?:people|person|persons|passengers?|pax|adults?)|for\s+(\d+)/);
+  const travelers = travMatch ? parseInt(travMatch[1] || travMatch[2]) : 1;
+
+  // Cabin class
+  const cabinClass =
+    /\b(business|biz)\b/.test(q) ? 'business' :
+    /\bfirst\s*class\b/.test(q) ? 'first' :
+    /\bpremium\s*economy\b/.test(q) ? 'premium_economy' : 'economy';
+
+  // Return date: "returning 25 mar" / "back on 25 mar"
+  const retMatch = q.match(/(?:return|returning|back\s+on|back)\s+(\d{1,2}\s*[a-z]+)/);
+  const returnDate = retMatch ? resolveDate(retMatch[1]) : null;
+
+  // Date fallback from legs
+  const depDate = legs[0]?.date || '';
+
+  // Find nationality
+  const natMatch = q.match(/(?:passport|nationality|i(?:'m| am) from)\s+([a-z]+)/);
+  const nationality = natMatch ? natMatch[1] : null;
+
+  // Services
+  const services: string[] = ['flight'];
+  if (/\bhotel\b/.test(q)) services.push('hotel');
+  if (/\b(?:car|rental|rent)\b/.test(q)) services.push('car');
+
+  // Add cabinClass to each leg
+  legs.forEach(l => { l.cabinClass = cabinClass; });
+
+  return {
+    origin:        legs[0].from,
+    destination:   legs[legs.length - 1].to,
+    departureDate: depDate,
+    returnDate:    returnDate,
+    travelers,
+    tripType:      legs.length > 1 ? 'multicity' : returnDate ? 'return' : 'oneway',
+    services,
+    nationality,
+    preferences:   { cabinClass, maxBudget: null },
+    legs,
+  };
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    const { userMessage: rawMessage } = await req.json();
-    const userMessage = normalizeQuery(rawMessage);
-
-    // Cache disabled for ai-brain — intent parsing is fast and must always be fresh
-    // const cached = await getCached('ai-brain', userMessage);
-
-    const limit = await checkGeminiRateLimit();
-    if (!limit.allowed) {
-      return NextResponse.json({ error: limit.reason, retryAfter: (limit as any).retryAfter }, { status: 429 });
+    const { userMessage } = await req.json();
+    if (!userMessage?.trim()) {
+      return NextResponse.json({ error: 'No message provided' }, { status: 400 });
     }
 
-    const prompt = `Today is ${TODAY}. You are a travel intent parser. Extract structured travel data from the user request.
+    // ── Layer 1: Try regex parser first (instant, no API) ─────────────────
+    const regexResult = regexParseIntent(userMessage);
+    if (regexResult?.origin && regexResult?.destination) {
+      console.log('[AI Brain] Regex parse succeeded:', regexResult.origin, '→', regexResult.destination);
+      return NextResponse.json(regexResult);
+    }
 
-CITY/AIRPORT ABBREVIATION LOOKUP (always resolve these):
-- "par", "paris", "CDG", "ORY" → "CDG" (Paris Charles de Gaulle)
-- "bll", "billund" → "BLL" (Billund, Denmark)
-- "agp", "malaga", "málaga" → "AGP" (Malaga, Spain)
-- "lhr", "lon", "london" → "LHR" (London Heathrow)
-- "dxb", "dubai" → "DXB" (Dubai)
-- "del", "delhi", "new delhi" → "DEL" (Delhi)
-- "jfk", "nyc", "new york" → "JFK" (New York)
-- "sin", "singapore" → "SIN"
-- "bkk", "bangkok" → "BKK"
-- "syd", "sydney" → "SYD"
-- "mel", "melbourne" → "MEL"
-- "hkg", "hong kong" → "HKG"
-- "nrt", "tyo", "tokyo" → "NRT"
-- "fra", "frankfurt" → "FRA"
-- "ams", "amsterdam" → "AMS"
-- "bcn", "barcelona" → "BCN"
-- "mad", "madrid" → "MAD"
-- "fcо", "rom", "rome" → "FCO"
-- "ist", "istanbul" → "IST"
-- "cph", "copenhagen" → "CPH"
-- "osl", "oslo" → "OSL"
-- "arn", "sto", "stockholm" → "ARN"
-- "muc", "munich" → "MUC"
-- "zrh", "zurich" → "ZRH"
-- "gva", "geneva" → "GVA"
-- "bom", "mum", "mumbai" → "BOM"
-- "blr", "bangalore" → "BLR"
-- "doh", "doha" → "DOH"
-- "auh", "abu dhabi" → "AUH"
-- "kul", "kuala lumpur" → "KUL"
-- "cgk", "jakarta" → "CGK"
-- "bali", "dps", "denpasar" → "DPS"
-- "mex", "mexico city" → "MEX"
-- "gru", "sao paulo" → "GRU"
-- "eze", "bue", "buenos aires" → "EZE"
-- "scl", "santiago" → "SCL"
-- "nbo", "nairobi" → "NBO"
-- "cpt", "cape town" → "CPT"
-- "jnb", "johannesburg" → "JNB"
-- "cai", "cairo" → "CAI"
+    // ── Layer 2: Gemini AI (for complex/ambiguous queries) ────────────────
+    const limit = await checkGeminiRateLimit();
+    if (!limit.allowed) {
+      return NextResponse.json({ error: (limit as any).reason, retryAfter: (limit as any).retryAfter }, { status: 429 });
+    }
 
-DATE RULES (today = ${TODAY}):
-- "18 mar", "mar 18", "march 18" → "2026-03-18"
-- "20 mar" → "2026-03-20"
-- "next friday" → calculate from today
-- Always output YYYY-MM-DD format
-- If no year, assume 2026
+    const prompt = `Today is ${TODAY}. Parse this travel request into JSON.
 
-MULTI-CITY RULES:
-- If request has multiple routes (e.g. "BLL to PAR 18 mar, PAR to AGP 20 mar"), create one leg per route
-- Comma or semicolon usually separates legs
-- tripType = "multicity" when legs > 1, "return" when returnDate set, else "oneway"
+Common city → IATA: Paris=CDG, Billund=BLL, Malaga=AGP, London=LHR, Dubai=DXB, Delhi=DEL, NYC=JFK, Singapore=SIN, Bangkok=BKK, Tokyo=NRT, Sydney=SYD, Mumbai=BOM, Rome=FCO, Barcelona=BCN, Madrid=MAD, Amsterdam=AMS, Frankfurt=FRA, Istanbul=IST, Cairo=CAI, Nairobi=NBO.
 
-PEOPLE/TRAVELERS:
-- "2 person", "2 people", "2 passengers", "for 2" → travelers: 2
-- "solo", "1 person" → travelers: 1
+Dates like "18 mar" = "${new Date().getFullYear()}-03-18". "2 person" = travelers:2. "business class" = cabinClass:"business".
 
-CABIN CLASS:
-- "business", "biz", "business class" → "business"
-- "first", "first class" → "first"
-- "premium", "premium economy" → "premium_economy"
-- default → "economy"
+For multi-leg trips, fill the legs array. Return ONLY JSON, no markdown:
+{"origin":"BLL","destination":"AGP","departureDate":"2026-03-18","returnDate":null,"travelers":2,"tripType":"multicity","services":["flight"],"nationality":null,"preferences":{"cabinClass":"business"},"legs":[{"from":"BLL","to":"CDG","date":"2026-03-18","cabinClass":"business"},{"from":"CDG","to":"AGP","date":"2026-03-20","cabinClass":"business"}]}
 
-Return ONLY a JSON object, absolutely no markdown fences, no explanation text:
-{"origin":"BLL","destination":"AGP","departureDate":"2026-03-18","returnDate":null,"travelers":2,"tripType":"multicity","services":["flight"],"nationality":null,"preferences":{"cabinClass":"business","maxBudget":null},"legs":[{"from":"BLL","to":"CDG","date":"2026-03-18","cabinClass":"business"},{"from":"CDG","to":"AGP","date":"2026-03-20","cabinClass":"business"}]}
-
-Travel request: "${userMessage}"`;
+Request: "${userMessage}"`;
 
     const res = await fetch(`${GEMINI_BASE}?key=${process.env.GEMINI_API_KEY}`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 600 },
+        generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
       }),
     });
 
     const data = await res.json();
-    if (data.error) return NextResponse.json({ error: `Gemini error: ${JSON.stringify(data.error)}` }, { status: 500 });
-
-    const raw    = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const intent = safeParseGeminiJSON(raw, FALLBACK_INTENT);
-
-    // Ensure legs always has at least 1 entry
-    if (!intent.legs || intent.legs.length === 0) {
-      if (intent.origin && intent.destination) {
-        intent.legs = ([{
-          from:       intent.origin,
-          to:         intent.destination,
-          date:       intent.departureDate,
-          cabinClass: intent.preferences?.cabinClass || 'economy',
-        }] as any[]);
-      }
+    if (data.error) {
+      console.error('[AI Brain] Gemini error:', data.error);
+      // If Gemini fails, return regex result even if incomplete
+      if (regexResult) return NextResponse.json(regexResult);
+      return NextResponse.json({ error: `AI error: ${data.error.message}` }, { status: 500 });
     }
 
-    // Derive origin/destination from legs if not set
+    const raw    = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const intent = safeParseGeminiJSON(raw, {});
+
+    // Ensure legs exist
+    if (!intent.legs?.length && intent.origin && intent.destination) {
+      intent.legs = ([{ from: intent.origin, to: intent.destination, date: intent.departureDate, cabinClass: intent.preferences?.cabinClass || 'economy' }] as any[]);
+    }
     if (intent.legs?.length > 0) {
-      if (!intent.origin)      intent.origin      = intent.legs[0].from;
-      if (!intent.destination) intent.destination = intent.legs[intent.legs.length - 1].to;
-      if (!intent.departureDate) intent.departureDate = intent.legs[0].date;
+      intent.origin        = intent.origin      || intent.legs[0].from;
+      intent.destination   = intent.destination || intent.legs[intent.legs.length - 1].to;
+      intent.departureDate = intent.departureDate || intent.legs[0].date;
       if (intent.legs.length > 1) intent.tripType = 'multicity';
     }
 
-    await setCached('ai-brain', userMessage, JSON.stringify(intent));
-    return NextResponse.json(intent);
+    // Merge with regex result as fallback for missing fields
+    const final = {
+      origin:        intent.origin        || regexResult?.origin        || '',
+      destination:   intent.destination   || regexResult?.destination   || '',
+      departureDate: intent.departureDate || regexResult?.departureDate || '',
+      returnDate:    intent.returnDate    ?? regexResult?.returnDate    ?? null,
+      travelers:     intent.travelers     || regexResult?.travelers     || 1,
+      tripType:      intent.tripType      || regexResult?.tripType      || 'oneway',
+      services:      intent.services      || regexResult?.services      || ['flight'],
+      nationality:   intent.nationality   || regexResult?.nationality   || null,
+      preferences:   intent.preferences   || regexResult?.preferences   || { cabinClass: 'economy' },
+      legs:          intent.legs          || regexResult?.legs          || [],
+    };
+
+    return NextResponse.json(final);
+
   } catch (err: any) {
+    console.error('[AI Brain] Unexpected error:', err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
