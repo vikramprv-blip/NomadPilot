@@ -12,13 +12,15 @@ async function getUser(supabase: any) {
 }
 
 async function logAccess(supabase: any, userId: string, action: string, itemId?: string, req?: NextRequest) {
-  await supabase.from('vault_access_log').insert({
-    user_id:    userId,
-    action,
-    item_id:    itemId || null,
-    ip_address: req?.headers.get('x-forwarded-for') || req?.headers.get('x-real-ip') || null,
-    user_agent: req?.headers.get('user-agent')?.slice(0, 200) || null,
-  }).catch(() => {});
+  try {
+    await supabase.from('vault_access_log').insert({
+      user_id:    userId,
+      action,
+      item_id:    itemId || null,
+      ip_address: req?.headers.get('x-forwarded-for') || req?.headers.get('x-real-ip') || null,
+      user_agent: req?.headers.get('user-agent')?.slice(0, 200) || null,
+    });
+  } catch { /* ignore logging errors */ }
 }
 
 // GET — list vault items (metadata only, no sensitive_data)

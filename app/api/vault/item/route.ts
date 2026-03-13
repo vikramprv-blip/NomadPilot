@@ -18,11 +18,15 @@ export async function GET(req: NextRequest) {
 
   if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Log access
-  await supabase.from('vault_access_log').insert({
-    user_id: user.id, action: 'view_item', item_id: id,
-    ip_address: req.headers.get('x-forwarded-for') || null,
-  }).catch(() => {});
+  // Log access (non-blocking, ignore errors)
+  try {
+    await supabase.from('vault_access_log').insert({
+      user_id:    user.id,
+      action:     'view_item',
+      item_id:    id,
+      ip_address: req.headers.get('x-forwarded-for') || null,
+    });
+  } catch { /* ignore logging errors */ }
 
   return NextResponse.json({ item: data });
 }
