@@ -6,23 +6,31 @@ import { AppState, AppStage, TripIntent, Itinerary } from '@/types';
 const initialState: AppState = { stage: 'input' };
 
 function safeIntent(raw: any): TripIntent {
+  const legs = Array.isArray(raw?.legs) && raw.legs.length > 0 ? raw.legs : null;
+  // Derive origin/destination from legs if not directly set
+  const origin      = raw?.origin      || raw?.from || legs?.[0]?.from || '';
+  const destination = raw?.destination || raw?.to   || legs?.[legs.length - 1]?.to || '';
+  const depDate     = raw?.departureDate || raw?.date || legs?.[0]?.date || '';
+
   return {
-    raw:           raw?.raw           || '',
-    origin:        raw?.origin        || raw?.from || '',
-    destination:   raw?.destination   || raw?.to   || '',
-    departureDate: raw?.departureDate || raw?.date  || '',
-    returnDate:    raw?.returnDate    || raw?.return || '',
+    raw:           raw?.raw   || '',
+    origin,
+    destination,
+    departureDate: depDate,
+    returnDate:    raw?.returnDate || raw?.return || null,
     travelers:     Number(raw?.travelers) || 1,
-    budget:        raw?.budget        || undefined,
-    currency:      raw?.currency      || 'USD',
-    services:      raw?.services      || ['flight', 'hotel'],
+    budget:        raw?.budget    || undefined,
+    currency:      raw?.currency  || 'USD',
+    services:      raw?.services  || ['flight'],
+    tripType:      raw?.tripType  || (legs && legs.length > 1 ? 'multicity' : 'oneway'),
+    legs:          legs || (origin && destination ? [{ from: origin, to: destination, date: depDate, cabinClass: raw?.preferences?.cabinClass || 'economy' }] : []),
     preferences: {
       cabinClass: raw?.preferences?.cabinClass || raw?.cabinClass || 'economy',
     },
     constraints: {
       visaPassport: raw?.constraints?.visaPassport || raw?.nationality || undefined,
     },
-  } as TripIntent & { nationality?: string; tripType?: string };
+  } as TripIntent & { nationality?: string };
 }
 
 export function useAppState() {
@@ -102,7 +110,8 @@ export function useAppState() {
       const rawIntent = data.intent || data;
       const intent    = safeIntent(rawIntent);
 
-      if (!intent.origin && !intent.destination) {
+      const hasLegs = Array.isArray((intent as any).legs) && (intent as any).legs.length > 0;
+      if (!intent.origin && !intent.destination && !hasLegs) {
         throw new Error('Could not understand your travel request. Try the Search tab to enter details manually, or be more specific: "Fly from Dubai to London on 25 March, 2 people, business class"');
       }
 

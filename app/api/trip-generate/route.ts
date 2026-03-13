@@ -89,21 +89,40 @@ export async function POST(req: NextRequest) {
     const hasRapidAPI = !!process.env.RAPIDAPI_KEY;
 
     // ── Flights: Kiwi (better coverage) → fallback Amadeus ──────────────────
+    // For multi-city, search each leg separately and combine results
+    const legs = (intent as any).legs?.length > 1
+      ? (intent as any).legs
+      : [{ from: intent.origin, to: intent.destination, date: intent.departureDate, cabinClass: intent.preferences?.cabinClass }];
+
     let flights: FlightOption[] = [];
     if (hasRapidAPI) {
-      const kiwiResults = await searchKiwiFlights({
-        origin:      intent.origin,
-        destination: intent.destination,
-        date:        intent.departureDate,
-        returnDate:  intent.returnDate || undefined,
-        adults:      intent.travelers || 1,
-        cabin:       intent.preferences?.cabinClass || 'economy',
-        currency:    intent.currency || 'USD',
-      });
-      flights = kiwiResults.map(kiwiToFlight);
+      // Search all legs in parallel
+      const legResults = await Promise.all(legs.map((leg: any) =>
+        searchKiwiFlights({
+          origin:      leg.from || intent.origin,
+          destination: leg.to   || intent.destination,
+          date:        leg.date || intent.departureDate,
+          returnDate:  legs.length === 1 ? (intent.returnDate || undefined) : undefined,
+          adults:      intent.travelers || 1,
+          cabin:       leg.cabinClass || intent.preferences?.cabinClass || 'economy',
+          currency:    intent.currency || 'USD',
+        }).then(r => r.map(kiwiToFlight))
+      ));
+      // For multi-city: label each leg result and flatten
+      if (legs.length > 1) {
+        flights = legResults.map((legFlights, i) => {
+          const leg = legs[i];
+          return legFlights.slice(0, 5).map((f: FlightOption) => ({
+            ...f,
+            legIndex: i,
+            legLabel: `Leg ${i + 1}: ${leg.from} → ${leg.to}`,
+          }));
+        }).flat();
+      } else {
+        flights = legResults[0] || [];
+      }
     }
     if (flights.length === 0) {
-      // Fallback to Amadeus
       flights = await searchFlights(intent);
     }
 

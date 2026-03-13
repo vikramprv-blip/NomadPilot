@@ -1,17 +1,26 @@
 // ─── Core Trip Types ──────────────────────────────────────────────────────────
 
+export interface TripLeg {
+  from:       string;
+  to:         string;
+  date:       string;
+  cabinClass?: string;
+}
+
 export interface TripIntent {
-  raw: string;
-  destination: string;
-  origin: string;
+  raw:          string;
+  destination:  string;
+  origin:       string;
   departureDate: string;
-  returnDate: string;
-  budget?: number;
-  currency?: string;
-  travelers: number;
-  preferences: TripPreferences;
-  constraints: TripConstraints;
-  services?: string[]; // e.g. ['flight','hotel','car','train']
+  returnDate:   string | null;
+  budget?:      number;
+  currency?:    string;
+  travelers:    number;
+  tripType?:    'return' | 'oneway' | 'multicity';
+  legs?:        TripLeg[];   // multi-city legs
+  preferences:  TripPreferences;
+  constraints:  TripConstraints;
+  services?:    string[];
 }
 
 export interface TripPreferences {
