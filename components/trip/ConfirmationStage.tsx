@@ -179,9 +179,9 @@ function FlightRow({ flight, intent, rank, onBook }: {
         {/* Price + book button */}
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: 'var(--gold)' }}>
-            ${flight.price.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            {fmtPrice(flight.price, intent.currency || flight.currency || 'USD')}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>{flight.currency} · per person</div>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>{intent.currency || flight.currency} · per person</div>
           <button
             onClick={() => setOpen(!open)}
             style={{ padding: '8px 18px', borderRadius: 7, background: 'var(--gold)', border: 'none', color: 'var(--navy)', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'DM Sans', transition: 'opacity 0.15s' }}
@@ -369,7 +369,7 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking }
           {` · ${intent.travelers || 1} passenger${(intent.travelers||1)>1?'s':''} · ${intent.preferences?.cabinClass || 'Economy'} · ${intent.currency || 'USD'}`}
         </p>
         {nationality && !/^[A-Z]{3}$/.test(nationality.toUpperCase()) && (
-          <VisaChecker nationality={nationality} destination={intent.destination} inline={true} />
+          <VisaChecker nationality={nationality} destination={intent.destination} inline={true} hideOnUnknown={true} />
         )}
       </div>
 

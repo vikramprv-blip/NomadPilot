@@ -38,10 +38,12 @@ export default function VisaChecker({
   nationality,
   destination,
   inline = false,
+  hideOnUnknown = false,
 }: {
   nationality: string;
   destination: string;
-  inline?: boolean;  // true = compact banner, false = full card
+  inline?: boolean;
+  hideOnUnknown?: boolean;
 }) {
   const [result, setResult]   = useState<VisaResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -82,6 +84,11 @@ export default function VisaChecker({
   );
 
   const cfg = getConfig(result.status);
+
+  // Hide if result is uninformative and hideOnUnknown is set
+  const FALLBACK_STATUSES = ['check embassy', 'unknown', 'check with embassy'];
+  const isUnknown = !result.status || FALLBACK_STATUSES.some(s => result.status.toLowerCase().includes(s));
+  if (hideOnUnknown && isUnknown) return null;
 
   // ── Compact inline banner ──────────────────────────────────────────────────
   if (inline) return (
