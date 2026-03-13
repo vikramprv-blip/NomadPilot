@@ -613,3 +613,18 @@ export default function AccountTab({ currentPlan = 'free' }: { currentPlan?: str
             </div>
 
             <p
+              style={{
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: 12,
+                marginTop: 20,
+              }}
+            >
+              All plans include a 7-day free trial · Cancel anytime · Payments via Stripe & PayPal
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
