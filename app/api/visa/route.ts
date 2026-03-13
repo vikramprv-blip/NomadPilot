@@ -1,198 +1,250 @@
+/**
+ * Visa requirements API
+ * 
+ * Strategy (3 layers):
+ * 1. Travel Buddy AI (RapidAPI) — live data, parsed correctly
+ * 2. Offline dataset fallback — passport-index-dataset (MIT, Feb 2026)
+ * 3. Gemini AI fallback — generates answer from training data
+ * 
+ * GET /api/visa?nationality=Danish&destination=delhi
+ * GET /api/visa?nationality=DK&destination=IN
+ */
 import { NextRequest, NextResponse } from 'next/server';
+import { lookupVisa } from '@/lib/visa/fallback';
 
-// ─── Travel Buddy AI via RapidAPI ────────────────────────────────────────────
-// Confirmed endpoint from docs:
-//   curl -X POST https://visa-requirement.p.rapidapi.com/v2/visa/check \
-//     -H "Content-Type: application/json" \
-//     -H "X-RapidAPI-Proxy-Secret: ${RAPIDAPI_SECRET}" \
-//     -d '{"passport":"CN","destination":"ID"}'
-//
-// Env var: TRAVEL_BUDDY_API_KEY  → your RapidAPI key
-// NB: The auth header is X-RapidAPI-Proxy-Secret (NOT x-rapidapi-key)
-//     Body is JSON (NOT form-urlencoded)
-// ─────────────────────────────────────────────────────────────────────────────
+const RAPIDAPI_KEY  = process.env.TRAVEL_BUDDY_API_KEY || process.env.RAPIDAPI_KEY || '';
+const RAPIDAPI_URL  = 'https://visa-requirement.p.rapidapi.com/v2/visa/check';
+const RAPIDAPI_HOST = 'visa-requirement.p.rapidapi.com';
+const GEMINI_KEY    = process.env.GEMINI_API_KEY || '';
 
-const RAPIDAPI_URL = 'https://visa-requirement.p.rapidapi.com/v2/visa/check';
-
-// ── Nationality adjective / country name → ISO-2 ────────────────────────────
-const TO_ISO: Record<string, string> = {
-  // adjectives
-  'Afghan':'AF','Albanian':'AL','Algerian':'DZ','American':'US',
-  'Argentine':'AR','Armenian':'AM','Australian':'AU','Austrian':'AT',
-  'Azerbaijani':'AZ','Bahraini':'BH','Bangladeshi':'BD','Belgian':'BE',
-  'Bolivian':'BO','Bosnian':'BA','Brazilian':'BR','British':'GB',
-  'Bulgarian':'BG','Cambodian':'KH','Canadian':'CA','Chilean':'CL',
-  'Chinese':'CN','Colombian':'CO','Croatian':'HR','Cuban':'CU',
-  'Cypriot':'CY','Czech':'CZ','Danish':'DK','Dutch':'NL',
-  'Egyptian':'EG','Emirati':'AE','Estonian':'EE','Ethiopian':'ET',
-  'Filipino':'PH','Finnish':'FI','French':'FR','Georgian':'GE',
-  'German':'DE','Ghanaian':'GH','Greek':'GR','Hungarian':'HU',
-  'Icelandic':'IS','Indian':'IN','Indonesian':'ID','Iranian':'IR',
-  'Iraqi':'IQ','Irish':'IE','Israeli':'IL','Italian':'IT',
-  'Japanese':'JP','Jordanian':'JO','Kazakh':'KZ','Kenyan':'KE',
-  'Korean':'KR','Kuwaiti':'KW','Latvian':'LV','Lebanese':'LB',
-  'Lithuanian':'LT','Malaysian':'MY','Mexican':'MX','Moroccan':'MA',
-  'Nepali':'NP','Nigerian':'NG','Norwegian':'NO','Omani':'OM',
-  'Pakistani':'PK','Palestinian':'PS','Philippine':'PH',
-  'Polish':'PL','Portuguese':'PT','Qatari':'QA','Romanian':'RO',
-  'Russian':'RU','Saudi':'SA','Serbian':'RS','Singaporean':'SG',
-  'Slovak':'SK','Slovenian':'SI','South African':'ZA','Spanish':'ES',
-  'Sri Lankan':'LK','Swedish':'SE','Swiss':'CH','Syrian':'SY',
-  'Taiwanese':'TW','Thai':'TH','Turkish':'TR','Ukrainian':'UA',
-  'Venezuelan':'VE','Vietnamese':'VN',
-  // country names
-  'Afghanistan':'AF','Albania':'AL','Algeria':'DZ','Argentina':'AR',
-  'Armenia':'AM','Australia':'AU','Austria':'AT','Bahrain':'BH',
-  'Bangladesh':'BD','Belgium':'BE','Brazil':'BR','Cambodia':'KH',
-  'Canada':'CA','Chile':'CL','China':'CN','Colombia':'CO',
-  'Croatia':'HR','Cyprus':'CY','Czech Republic':'CZ','Denmark':'DK',
-  'Egypt':'EG','Estonia':'EE','Ethiopia':'ET','Finland':'FI',
-  'France':'FR','Germany':'DE','Ghana':'GH','Greece':'GR',
-  'Hungary':'HU','Iceland':'IS','India':'IN','Indonesia':'ID',
-  'Iran':'IR','Iraq':'IQ','Ireland':'IE','Israel':'IL',
-  'Italy':'IT','Japan':'JP','Jordan':'JO','Kazakhstan':'KZ',
-  'Kenya':'KE','Kuwait':'KW','Latvia':'LV','Lebanon':'LB',
-  'Lithuania':'LT','Malaysia':'MY','Mexico':'MX','Morocco':'MA',
-  'Nepal':'NP','Netherlands':'NL','New Zealand':'NZ','Nigeria':'NG',
-  'Norway':'NO','Oman':'OM','Pakistan':'PK','Philippines':'PH',
-  'Poland':'PL','Portugal':'PT','Qatar':'QA','Romania':'RO',
-  'Russia':'RU','Saudi Arabia':'SA','Serbia':'RS','Singapore':'SG',
-  'South Africa':'ZA','South Korea':'KR','Spain':'ES',
-  'Sri Lanka':'LK','Sweden':'SE','Switzerland':'CH','Syria':'SY',
-  'Taiwan':'TW','Thailand':'TH','Turkey':'TR','Türkiye':'TR',
-  'UAE':'AE','United Arab Emirates':'AE','United Kingdom':'GB',
-  'United States':'US','United States of America':'US','USA':'US',
-  'Ukraine':'UA','Venezuela':'VE','Vietnam':'VN','Viet Nam':'VN',
+// ── ISO-2 resolver ─────────────────────────────────────────────────────────
+const NATIONALITY_TO_ISO2: Record<string, string> = {
+  afghan:'AF', albanian:'AL', algerian:'DZ', american:'US', argentine:'AR',
+  armenian:'AM', australian:'AU', austrian:'AT', azerbaijani:'AZ', bahraini:'BH',
+  bangladeshi:'BD', belgian:'BE', brazilian:'BR', british:'GB', bulgarian:'BG',
+  cambodian:'KH', canadian:'CA', chilean:'CL', chinese:'CN', colombian:'CO',
+  croatian:'HR', czech:'CZ', danish:'DK', dutch:'NL', egyptian:'EG',
+  emirati:'AE', estonian:'EE', ethiopian:'ET', finnish:'FI', french:'FR',
+  georgian:'GE', german:'DE', ghanaian:'GH', greek:'GR', hungarian:'HU',
+  indian:'IN', indonesian:'ID', iranian:'IR', iraqi:'IQ', irish:'IE',
+  israeli:'IL', italian:'IT', japanese:'JP', jordanian:'JO', kazakh:'KZ',
+  kenyan:'KE', korean:'KR', kuwaiti:'KW', latvian:'LV', lebanese:'LB',
+  lithuanian:'LT', malaysian:'MY', mexican:'MX', moroccan:'MA', nigerian:'NG',
+  norwegian:'NO', omani:'OM', pakistani:'PK', philippine:'PH', polish:'PL',
+  portuguese:'PT', qatari:'QA', romanian:'RO', russian:'RU', saudi:'SA',
+  serbian:'RS', singaporean:'SG', 'south african':'ZA', spanish:'ES',
+  'sri lankan':'LK', swedish:'SE', swiss:'CH', syrian:'SY', taiwanese:'TW',
+  thai:'TH', turkish:'TR', ukrainian:'UA', venezuelan:'VE', vietnamese:'VN',
 };
 
-// ── IATA airport code → country ISO-2 ───────────────────────────────────────
-const IATA: Record<string, string> = {
+const CITY_TO_ISO2: Record<string, string> = {
   // India
-  'DEL':'IN','BOM':'IN','BLR':'IN','MAA':'IN','CCU':'IN','HYD':'IN',
-  'COK':'IN','AMD':'IN','PNQ':'IN','GOI':'IN','IXC':'IN','ATQ':'IN',
-  // Gulf
-  'DXB':'AE','AUH':'AE','SHJ':'AE','DOH':'QA','KWI':'KW',
-  'BAH':'BH','MCT':'OM','RUH':'SA','JED':'SA','MED':'SA',
-  // Europe
-  'LHR':'GB','LGW':'GB','MAN':'GB','STN':'GB','LTN':'GB','EDI':'GB',
-  'CDG':'FR','ORY':'FR','NCE':'FR','FRA':'DE','MUC':'DE','BER':'DE',
-  'HAM':'DE','DUS':'DE','AMS':'NL','BRU':'BE','ZRH':'CH','GVA':'CH',
-  'MAD':'ES','BCN':'ES','FCO':'IT','MXP':'IT','NAP':'IT','VCE':'IT',
-  'VIE':'AT','PRG':'CZ','WAW':'PL','BUD':'HU',
-  'CPH':'DK','BLL':'DK','AAL':'DK','ARN':'SE','OSL':'NO','HEL':'FI',
-  'LIS':'PT','OPO':'PT','ATH':'GR','IST':'TR','SAW':'TR','AYT':'TR',
-  'DUB':'IE','SVO':'RU','DME':'RU','LED':'RU',
-  // Americas
-  'JFK':'US','LAX':'US','ORD':'US','MIA':'US','SFO':'US','BOS':'US',
-  'ATL':'US','DFW':'US','DEN':'US','SEA':'US','LAS':'US','YYZ':'CA',
-  'YVR':'CA','YUL':'CA','GRU':'BR','EZE':'AR','MEX':'MX','BOG':'CO',
-  'LIM':'PE','SCL':'CL',
-  // Asia-Pacific
-  'NRT':'JP','HND':'JP','KIX':'JP','SIN':'SG','KUL':'MY','BKK':'TH',
-  'HKT':'TH','HKG':'HK','MNL':'PH','CGK':'ID','DPS':'ID',
-  'ICN':'KR','GMP':'KR','PEK':'CN','PVG':'CN','CAN':'CN',
-  'SYD':'AU','MEL':'AU','BNE':'AU','PER':'AU','AKL':'NZ',
-  'CMB':'LK','DAC':'BD','KHI':'PK','LHE':'PK','ISB':'PK','KTM':'NP',
-  'SGN':'VN','HAN':'VN','PNH':'KH','RGN':'MM',
-  // Africa / Middle East
-  'TLV':'IL','AMM':'JO','BEY':'LB','CAI':'EG','HRG':'EG',
-  'CMN':'MA','RAK':'MA','NBO':'KE','JNB':'ZA','CPT':'ZA',
-  'LOS':'NG','ACC':'GH','ADD':'ET','DAR':'TZ',
+  delhi:'IN', 'new delhi':'IN', mumbai:'IN', bangalore:'IN', chennai:'IN',
+  kolkata:'IN', hyderabad:'IN', bom:'IN', del:'IN', maa:'IN', bom:'IN',
+  // UK
+  london:'GB', manchester:'GB', birmingham:'GB', lhr:'GB', lgw:'GB', ltn:'GB',
+  // USA
+  'new york':'US', 'los angeles':'US', chicago:'US', jfk:'US', lax:'US', ord:'US',
+  // UAE
+  dubai:'AE', 'abu dhabi':'AE', dxb:'AE', auh:'AE',
+  // Thailand
+  bangkok:'TH', phuket:'TH', bkk:'TH',
+  // Germany
+  berlin:'DE', munich:'DE', frankfurt:'DE', fra:'DE', txl:'DE',
+  // France
+  paris:'FR', cdg:'FR', ory:'FR',
+  // Singapore
+  singapore:'SG', sin:'SG',
+  // Japan
+  tokyo:'JP', osaka:'JP', nrt:'JP', kix:'JP',
+  // Australia
+  sydney:'AU', melbourne:'AU', syd:'AU', mel:'AU',
+  // Canada
+  toronto:'CA', vancouver:'CA', yyz:'CA', yvr:'CA',
+  // China
+  beijing:'CN', shanghai:'CN', pek:'CN', pvg:'CN',
+  // Indonesia
+  bali:'ID', jakarta:'ID', dps:'ID', cgk:'ID',
+  // Turkey
+  istanbul:'TR', ist:'TR',
+  // South Africa
+  'cape town':'ZA', johannesburg:'ZA', cpt:'ZA', jnb:'ZA',
+  // Kenya
+  nairobi:'KE', nbo:'KE',
+  // Egypt
+  cairo:'EG', cai:'EG',
+  // Morocco
+  marrakech:'MA', casablanca:'MA', rak:'MA',
+  // Brazil
+  'sao paulo':'BR', 'rio de janeiro':'BR', gru:'BR',
+  // South Korea
+  seoul:'KR', icn:'KR',
+  // Malaysia
+  'kuala lumpur':'MY', kul:'MY',
+  // Vietnam
+  hanoi:'VN', 'ho chi minh':'VN', han:'VN', sgn:'VN',
+  // Sri Lanka
+  colombo:'LK', cmb:'LK',
+  // Nepal
+  kathmandu:'NP', ktm:'NP',
+  // Maldives
+  male:'MV', mle:'MV',
+  // Scandinavia
+  copenhagen:'DK', cph:'DK', oslo:'NO', osl:'NO',
+  stockholm:'SE', arn:'SE', helsinki:'FI', hel:'FI',
+  amsterdam:'NL', ams:'NL', brussels:'BE', bru:'BE',
+  zurich:'CH', zrh:'CH', vienna:'AT', vie:'AT',
+  // Eastern Europe
+  warsaw:'PL', waw:'PL', prague:'CZ', prg:'CZ',
+  budapest:'HU', bud:'HU', bucharest:'RO', otp:'RO',
+  // Middle East
+  riyadh:'SA', ruh:'SA', doha:'QA', doh:'QA',
+  kuwait:'KW', kwi:'KW', muscat:'OM', mct:'OM',
+  amman:'JO', amm:'JO', beirut:'LB', bey:'LB',
+  // Africa
+  lagos:'NG', los:'NG', accra:'GH', acc:'GH',
+  'addis ababa':'ET', add:'ET',
+  // Denmark extras
+  billund:'DK', bll:'DK', aarhus:'DK', aal:'DK',
 };
 
-function toISO(raw: string): string {
-  if (!raw) return '';
-  const t = raw.trim();
-  const u = t.toUpperCase();
-  if (/^[A-Z]{2}$/.test(u)) return u;                          // already ISO-2
-  if (/^[A-Z]{3}$/.test(u) && IATA[u]) return IATA[u];        // IATA code
-  if (TO_ISO[t]) return TO_ISO[t];                             // exact match
-  const k = Object.keys(TO_ISO).find(x => x.toLowerCase() === t.toLowerCase());
-  if (k) return TO_ISO[k];                                     // case-insensitive
-  return u.slice(0, 2);                                        // last resort
+function toISO2(raw: string): string {
+  const s = raw.toLowerCase().trim();
+  // Already ISO-2
+  if (/^[a-z]{2}$/.test(s)) return s.toUpperCase();
+  // ISO-3 → ISO-2
+  const iso3Map: Record<string,string> = { dnk:'DK', gbr:'GB', usa:'US', deu:'DE', ind:'IN', are:'AE', sgp:'SG', aus:'AU', can:'CA', fra:'FR', nor:'NO', swe:'SE', jpn:'JP', kor:'KR', nld:'NL', ita:'IT', esp:'ES', bra:'BR', chn:'CN', tur:'TR', idn:'ID', tha:'TH', mys:'MY', pak:'PK' };
+  if (/^[a-z]{3}$/.test(s) && iso3Map[s]) return iso3Map[s];
+  // Nationality name → ISO-2
+  if (NATIONALITY_TO_ISO2[s]) return NATIONALITY_TO_ISO2[s];
+  // City / IATA → ISO-2
+  if (CITY_TO_ISO2[s]) return CITY_TO_ISO2[s];
+  // IATA 3-letter airport code
+  if (/^[a-z]{3}$/.test(s) && CITY_TO_ISO2[s]) return CITY_TO_ISO2[s];
+  return raw.toUpperCase().slice(0, 2);
+}
+
+// ── Gemini AI fallback ─────────────────────────────────────────────────────
+async function askGemini(passport: string, destination: string): Promise<any> {
+  if (!GEMINI_KEY) return null;
+  try {
+    const prompt = `What are the visa requirements for a ${passport} passport holder traveling to ${destination}?
+Reply ONLY with a JSON object, no markdown, no explanation:
+{"status":"Visa Free|Visa on Arrival|eVisa Available|Visa Required|Electronic Travel Auth","required":true/false,"stayDays":number_or_null,"evisaAvailable":true/false,"notes":"brief note or null"}`;
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    });
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const clean = text.replace(/```json|```/g, '').trim();
+    return { ...JSON.parse(clean), source: 'Gemini AI (estimated)' };
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const nationalityRaw = searchParams.get('nationality') || '';
-  const destinationRaw = searchParams.get('destination') || '';
-  const apiKey         = process.env.TRAVEL_BUDDY_API_KEY;
+  const p         = req.nextUrl.searchParams;
+  const natRaw    = p.get('nationality') || '';
+  const destRaw   = p.get('destination') || '';
 
-  if (!nationalityRaw || !destinationRaw) {
-    return NextResponse.json(
-      { error: 'nationality and destination are required' },
-      { status: 400 }
-    );
+  if (!natRaw || !destRaw) {
+    return NextResponse.json({ error: 'nationality and destination required' }, { status: 400 });
   }
 
-  const passportCode = toISO(nationalityRaw);
-  const destCode     = toISO(destinationRaw);
+  const passportCode  = toISO2(natRaw);
+  const destCode      = toISO2(destRaw);
 
-  if (!apiKey) {
-    return NextResponse.json({
-      status: 'api_key_missing',
-      message: 'Set TRAVEL_BUDDY_API_KEY in Vercel env vars. Get your key at https://rapidapi.com/TravelBuddyAI/api/visa-requirement',
-      passportCode,
-      destCode,
-    });
-  }
+  // ── Layer 1: Travel Buddy AI ─────────────────────────────────────────────
+  if (RAPIDAPI_KEY) {
+    try {
+      const res = await fetch(RAPIDAPI_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type':    'application/json',
+          'X-RapidAPI-Key':  RAPIDAPI_KEY,
+          'X-RapidAPI-Host': RAPIDAPI_HOST,
+        },
+        body: JSON.stringify({ passport: passportCode, destination: destCode }),
+        next: { revalidate: 86400 },
+      });
 
-  try {
-    const res = await fetch(RAPIDAPI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type':    'application/json',
-        'X-RapidAPI-Key':  apiKey,
-        'X-RapidAPI-Host': 'visa-requirement.p.rapidapi.com',
-      },
-      body: JSON.stringify({
-        passport:    passportCode,
-        destination: destCode,
-      }),
-      next: { revalidate: 86400 }, // cache 24 h — visa rules change rarely
-    });
+      if (res.ok) {
+        const data = await res.json();
+        const d    = data?.data || data;
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Travel Buddy API ${res.status}: ${errText.slice(0, 300)}`);
+        // CORRECT field names from Travel Buddy AI v2 API docs
+        const primary   = d?.visa_rules?.primary_rule   || d?.visa_rules?.primary   || {};
+        const secondary = d?.visa_rules?.secondary_rule || d?.visa_rules?.secondary  || {};
+        const dest      = d?.destination || {};
+
+        const statusLabel =
+          primary?.name        || primary?.category_label  || primary?.category ||
+          secondary?.name      || d?.category_label        || d?.category       || '';
+
+        // Only use this result if we got a real status back
+        if (statusLabel && statusLabel.toLowerCase() !== 'check embassy' && statusLabel.length > 2) {
+          return NextResponse.json({
+            status:           statusLabel,
+            required:         statusLabel.toLowerCase().includes('required') && !statusLabel.toLowerCase().includes('not required'),
+            stayDays:         primary?.duration           || secondary?.duration        || null,
+            evisaAvailable:   !!(secondary?.name?.toLowerCase().includes('evisa') || secondary?.link || d?.mandatory_registration),
+            evisaUrl:         secondary?.link             || d?.mandatory_registration?.link || null,
+            notes:            dest?.passport_validity ? `Passport validity required: ${dest.passport_validity}` : null,
+            passportCode,
+            destCode,
+            passportName:     d?.passport?.name           || null,
+            destName:         dest?.name                  || null,
+            source:           'Travel Buddy AI (RapidAPI)',
+            lastUpdated:      new Date().toISOString().slice(0, 10),
+            mandatory:        d?.mandatory_registration   || null,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[Visa] Travel Buddy API error:', err);
     }
+  }
 
-    const data = await res.json();
-
-    // ── Normalise response ───────────────────────────────────────────────────
-    // v2 shape: { data: { passport:{}, destination:{}, visa_rules: { primary:{}, secondary:{} }, mandatory_registration:[] } }
-    const d       = data?.data         || data;
-    const primary = d?.visa_rules?.primary   || {};
-    const meta    = d;
-
-    const statusLabel =
-      primary?.category_label ||
-      primary?.category       ||
-      d?.visa_category        ||
-      'Check embassy';
-
-    const required =
-      primary?.visa_required ??
-      (statusLabel.toLowerCase().includes('required') ? true : undefined);
-
+  // ── Layer 2: Offline dataset ─────────────────────────────────────────────
+  const offline = lookupVisa(passportCode, destCode);
+  if (offline) {
     return NextResponse.json({
-      required,
-      status:           statusLabel,
-      stayDuration:     primary?.duration               || null,
-      passportValidity: d?.passport?.validity_required  || null,
-      evisaAvailable:   primary?.evisa_available        ?? false,
-      evisaUrl:         primary?.evisa_url              || primary?.official_url || null,
-      notes:            primary?.notes                  || d?.exception         || null,
-      mandatoryReg:     d?.mandatory_registration       || [],
+      status:         offline.status,
+      required:       offline.required,
+      stayDays:       offline.stayDays,
+      evisaAvailable: offline.evisaAvailable,
+      evisaUrl:       null,
+      notes:          null,
       passportCode,
       destCode,
-      passportName:     d?.passport?.name     || null,
-      destName:         d?.destination?.name  || null,
-      source:           'Travel Buddy AI (RapidAPI)',
-      lastUpdated:      d?.last_updated || new Date().toISOString().slice(0, 10),
+      source:         'Passport Index Dataset (Feb 2026)',
+      lastUpdated:    '2026-02-01',
     });
-
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
   }
+
+  // ── Layer 3: Gemini AI ───────────────────────────────────────────────────
+  const gemini = await askGemini(natRaw, destRaw);
+  if (gemini) {
+    return NextResponse.json({
+      ...gemini,
+      passportCode,
+      destCode,
+      lastUpdated: new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  // ── Nothing worked ────────────────────────────────────────────────────────
+  return NextResponse.json({
+    status:     'No data available',
+    required:   null,
+    stayDays:   null,
+    passportCode,
+    destCode,
+    source:     'No data',
+    error:      `Could not find visa requirements for ${natRaw} → ${destRaw}. Please check with the destination embassy.`,
+  });
 }

@@ -2,19 +2,20 @@
 import { useState, useEffect } from 'react';
 
 interface VisaResult {
-  required: boolean;
+  required: boolean | null;
   status: string;
-  stayDuration: number | null;
-  passportValidity: string | null;
+  stayDays?: number | string | null;
+  stayDuration?: number | string | null;  // legacy
+  passportValidity?: string | null;
   evisaAvailable: boolean;
-  evisaUrl: string | null;
-  notes: string | null;
+  evisaUrl?: string | null;
+  notes?: string | null;
   passportCode: string;
   destCode: string;
   source: string;
   lastUpdated: string;
+  mandatory?: any;
   error?: string;
-  api_key_missing?: boolean;
   message?: string;
 }
 
@@ -96,8 +97,8 @@ export default function VisaChecker({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 16 }}>{cfg.icon}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: cfg.color }}>{result.status}</span>
-        {result.stayDuration && (
-          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>· Up to {result.stayDuration} days</span>
+        {(result.stayDays || result.stayDuration) && (
+          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>· Up to {result.stayDays || result.stayDuration}</span>
         )}
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -106,6 +107,9 @@ export default function VisaChecker({
             style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.3)', color: '#60a5fa', textDecoration: 'none', fontWeight: 600 }}>
             Apply eVisa ↗
           </a>
+        )}
+        {result.mandatory && (
+          <span style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600 }}>⚠ {result.mandatory.name} required</span>
         )}
         <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>via {result.source}</span>
       </div>
@@ -133,10 +137,10 @@ export default function VisaChecker({
 
       {/* Details grid */}
       <div style={{ padding: '0 18px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {result.stayDuration && (
+        {(result.stayDays || result.stayDuration) && (
           <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(0,0,0,0.2)' }}>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 3 }}>MAX STAY</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{result.stayDuration} <span style={{ fontSize: 12, fontWeight: 400 }}>days</span></div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>{result.stayDays || result.stayDuration} <span style={{ fontSize: 12, fontWeight: 400 }}>days</span></div>
           </div>
         )}
         {result.passportValidity && (
