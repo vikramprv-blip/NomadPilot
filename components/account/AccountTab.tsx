@@ -158,8 +158,8 @@ export default function AccountTab({ currentPlan = 'free' }: { currentPlan?: str
       </div>
 
       {section === 'alerts' ? <PriceAlertsPanel /> : (
-      <>{/* Billing toggle */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 32 }}>
+        <>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 32 }}>
         <div style={{ display: 'inline-flex', background: 'var(--navy-mid)', border: '1px solid var(--navy-border)', borderRadius: 10, padding: 4, gap: 4 }}>
           {(['monthly','annual'] as const).map(b => (
             <button key={b} onClick={() => setBilling(b)} style={{ padding: '8px 24px', borderRadius: 7, border: 'none', cursor: 'pointer', fontFamily: 'DM Sans', fontWeight: 600, fontSize: 13, background: billing === b ? 'var(--gold)' : 'transparent', color: billing === b ? 'var(--navy)' : 'var(--text-dim)', transition: 'all 0.2s' }}>
@@ -248,7 +248,8 @@ export default function AccountTab({ currentPlan = 'free' }: { currentPlan?: str
         <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, marginTop: 20 }}>
           All plans include a 7-day free trial · Cancel anytime · Payments via Stripe & PayPal
         </p>
-      </>)}
+        </>
+      )}
       </div>
     </div>
   );
