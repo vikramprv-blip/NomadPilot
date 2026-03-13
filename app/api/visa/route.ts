@@ -40,7 +40,7 @@ const NATIONALITY_TO_ISO2: Record<string, string> = {
 const CITY_TO_ISO2: Record<string, string> = {
   // India
   delhi:'IN', 'new delhi':'IN', mumbai:'IN', bangalore:'IN', chennai:'IN',
-  kolkata:'IN', hyderabad:'IN', bom:'IN', del:'IN', maa:'IN', bom:'IN',
+  kolkata:'IN', hyderabad:'IN', bom:'IN', del:'IN', maa:'IN',
   // UK
   london:'GB', manchester:'GB', birmingham:'GB', lhr:'GB', lgw:'GB', ltn:'GB',
   // USA
