@@ -3,6 +3,8 @@ import { useState, useCallback } from 'react';
 import { useAppState } from '@/hooks/useAppState';
 import { useAuth } from '@/hooks/useAuth';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import BetaGate from '@/components/beta/BetaGate';
+import VaultTab from '@/components/vault/VaultTab';
 import TabNav from '@/components/tabs/TabNav';
 import StageProgress from '@/components/layout/StageProgress';
 import InputStage from '@/components/trip/InputStage';
@@ -17,18 +19,18 @@ import AccountTab from '@/components/account/AccountTab';
 import AuthModal from '@/components/auth/AuthModal';
 import ChatBot from '@/components/chat/ChatBot';
 
-type Tab = 'search' | 'mytrips' | 'destination' | 'account';
+type Tab = 'search' | 'mytrips' | 'destination' | 'account' | 'vault';
 
 export default function HomePage() {
   const { state, loading, error, processInput, processStructuredSearch, confirmItinerary, bookTrip, setStage, reset } = useAppState();
   const { user, loading: authLoading, signOut } = useAuth();
   const { permission, supported, requestPermission, notify } = usePushNotifications(user?.id);
 
-  const [tab, setTab]                 = useState<Tab>('search');
-  const [nationality, setNationality] = useState('');
-  const [showVisa, setShowVisa]       = useState(false);
-  const [showAuth, setShowAuth]       = useState(false);
-  const [tripCount, setTripCount]     = useState(0);
+  const [tab, setTab]                   = useState<Tab>('search');
+  const [nationality, setNationality]   = useState('');
+  const [showVisa, setShowVisa]         = useState(false);
+  const [showAuth, setShowAuth]         = useState(false);
+  const [tripCount, setTripCount]       = useState(0);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [notifBanner, setNotifBanner]   = useState(true);
 
@@ -48,17 +50,24 @@ export default function HomePage() {
     notify(`${type === 'flight' ? '✈ Flight' : type === 'hotel' ? '🏨 Hotel' : type === 'car' ? '🚗 Car' : '🚂 Train'} saved to My Trips`, `Booked via ${partner}`);
   }, [user, notify]);
 
-  const handleSearchSubmit = (data: object) => {
+  // Structured search tab — bypass Gemini, parse form directly
+  const handleSearchSubmit = useCallback((data: object) => {
     const d = data as any;
     if (d.nationality) setNationality(d.nationality);
     processStructuredSearch(d);
-  };
+  }, [processStructuredSearch]);
+
+  // AI planner tab — go through Gemini
+  const handleAISubmit = useCallback((text: string) => {
+    processInput(text);
+  }, [processInput]);
 
   const inSearch     = tab === 'search';
   const showProgress = inSearch && state.stage !== 'input';
   const chatContext  = user ? { name: user.user_metadata?.full_name || user.email, email: user.email, plan: user.user_metadata?.plan || 'free', tripCount } : undefined;
 
   return (
+    <BetaGate>
     <div style={{ minHeight: '100vh', background: 'var(--navy)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 80% 45% at 50% -5%, rgba(232,160,32,0.07), transparent)' }} />
 
@@ -86,10 +95,10 @@ export default function HomePage() {
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
           {inSearch && state.stage === 'input' && (
-            <button onClick={() => setShowVisa(v => !v)} className="btn btn-navy" style={{ fontSize: 12, padding: '6px 12px' }}>🛂</button>
+            <button onClick={() => setShowVisa(v => !v)} className="btn btn-navy" style={{ fontSize: 12, padding: '6px 12px' }}>🛂 Visa</button>
           )}
           {inSearch && state.stage !== 'input' && (
-            <button className="btn btn-navy" onClick={reset} style={{ fontSize: 12, padding: '6px 12px' }}>← New</button>
+            <button className="btn btn-navy" onClick={reset} style={{ fontSize: 12, padding: '6px 12px' }}>← New Search</button>
           )}
           {!authLoading && (
             user ? (
@@ -135,7 +144,7 @@ export default function HomePage() {
           <>
             {state.stage === 'input' && (
               <>
-                <InputStage onSubmit={handleSearchSubmit} onAISubmit={processInput} loading={loading} />
+                <InputStage onSubmit={handleSearchSubmit} onAISubmit={handleAISubmit} loading={loading} />
                 {showVisa && <div style={{ maxWidth: 880, margin: '28px auto 0' }}><VisaCalendar nationality={nationality} /></div>}
               </>
             )}
@@ -143,19 +152,20 @@ export default function HomePage() {
             {state.stage === 'confirmation' && state.itineraries && state.intent && (
               <ConfirmationStage itineraries={state.itineraries} intent={state.intent} onSaveBooking={handleSaveBooking} />
             )}
-            {state.stage === 'booking'    && state.selectedItinerary && <BookingStage itinerary={state.selectedItinerary} onBook={bookTrip} loading={loading} />}
-            {state.stage === 'ops'        && state.booking && state.selectedItinerary && <OpsStage booking={state.booking} itinerary={state.selectedItinerary} tripId={state.tripId} onContinue={() => setStage('organizer')} />}
-            {state.stage === 'organizer'  && state.selectedItinerary && state.booking  && <OrganizerStage itinerary={state.selectedItinerary} booking={state.booking} onContinue={() => setStage('post_trip')} />}
-            {state.stage === 'post_trip'  && state.selectedItinerary && <PostTripStage itinerary={state.selectedItinerary} onReset={reset} />}
+            {state.stage === 'booking'   && state.selectedItinerary && <BookingStage itinerary={state.selectedItinerary} onBook={bookTrip} loading={loading} />}
+            {state.stage === 'ops'       && state.booking && state.selectedItinerary && <OpsStage booking={state.booking} itinerary={state.selectedItinerary} tripId={state.tripId} onContinue={() => setStage('organizer')} />}
+            {state.stage === 'organizer' && state.selectedItinerary && state.booking  && <OrganizerStage itinerary={state.selectedItinerary} booking={state.booking} onContinue={() => setStage('post_trip')} />}
+            {state.stage === 'post_trip' && state.selectedItinerary && <PostTripStage itinerary={state.selectedItinerary} onReset={reset} />}
           </>
         )}
         {tab === 'mytrips'     && <MyTripsTab userId={user?.id} />}
         {tab === 'destination' && <DestinationTab />}
         {tab === 'account'     && <AccountTab currentPlan={user?.user_metadata?.plan || 'free'} />}
+        {tab === 'vault'       && <VaultTab user={user} />}
       </main>
 
-      {/* Floating AI chatbot — visible on every tab */}
       <ChatBot user={user} userContext={chatContext} />
     </div>
+    </BetaGate>
   );
 }

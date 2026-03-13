@@ -1,12 +1,13 @@
 'use client';
 
-type Tab = 'search' | 'mytrips' | 'destination' | 'account';
+type Tab = 'search' | 'mytrips' | 'destination' | 'account' | 'vault';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'search',      icon: '🔍', label: 'Search' },
   { id: 'mytrips',     icon: '✈', label: 'My Trips' },
   { id: 'destination', icon: '🌍', label: 'Destination' },
   { id: 'account',     icon: '👤', label: 'Account' },
+  { id: 'vault',       icon: '🔐', label: 'Vault' },
 ];
 
 export default function TabNav({ active, onChange, tripCount }: {
