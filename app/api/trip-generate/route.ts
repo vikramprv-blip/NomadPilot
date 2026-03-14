@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
 
     // ── Car Rental ────────────────────────────────────────────────────────────
     const needsCar   = services.includes('car');
-    let   cars: CarResult[] = [];
+    let hotels: any[] = [];
     if (needsCar && hasRapidAPI) {
       try {
         const carCity     = (intent as any).hotelDestination || intent.destination;
