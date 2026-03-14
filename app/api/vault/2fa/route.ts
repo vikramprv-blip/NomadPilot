@@ -13,14 +13,15 @@ function base32Encode(buf: Buffer): string {
   const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   let result = '';
   let bits = 0, val = 0;
-  for (const byte of buf) {
-    val = (val << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      result += CHARS[(val >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
+for (let i = 0; i < buf.length; i++) {
+  const byte = buf[i];
+  val = (val << 8) | byte;
+  bits += 8;
+  while (bits >= 5) {
+    result += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.charAt((val >> (bits - 5)) & 31);
+    bits -= 5;
   }
+}
   if (bits > 0) result += CHARS[(val << (5 - bits)) & 31];
   return result;
 }
