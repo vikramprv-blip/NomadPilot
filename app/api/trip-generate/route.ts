@@ -27,7 +27,7 @@ function kiwiToFlight(k: KiwiFlight): FlightOption {
     bookingClass: 'Y',
     loyaltyMiles: Math.round(k.price * 5),
     co2kg:        Math.round(k.price * 0.8),
-    bookingUrl:   (k as any).deepLink,
+    ...({ bookingUrl: (k as any).deepLink } as any),
   };
 }
 
