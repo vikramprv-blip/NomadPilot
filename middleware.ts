@@ -24,4 +24,43 @@ export async function middleware(request: NextRequest) {
       cookies: {
         getAll() { return request.cookies.getAll(); },
         setAll(cookiesToSet) {
-          cookies
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value);
+            response.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session) {
+    return NextResponse.redirect(new URL('/beta', request.url));
+  }
+
+  const { data: tester } = await supabase
+    .from('beta_testers')
+    .select('status')
+    .eq('email', session.user.email!)
+    .single();
+
+  const approved = tester?.status === 'approved' || tester?.status === 'active';
+
+  if (!approved) {
+    return NextResponse.redirect(new URL('/beta-status', request.url));
+  }
+
+  return response;
+}
+
+export const config = {
+  matcher: [
+    '/',
+    '/flights/:path*',
+    '/trips/:path*',
+    '/dashboard/:path*',
+    '/vault/:path*',
+    '/pricing/:path*',
+  ],
+};
