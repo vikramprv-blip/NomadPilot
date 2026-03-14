@@ -29,7 +29,11 @@ async function deriveKey(password: string, salt: Uint8Array<ArrayBuffer>): Promi
 
 function toBase64(buf: ArrayBuffer | Uint8Array<ArrayBuffer>): string {
   const arr = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-  return btoa(String.fromCharCode(...arr));
+  let binary = '';
+  for (let i = 0; i < arr.length; i++) {
+    binary += String.fromCharCode(arr[i]);
+  }
+  return btoa(binary);
 }
 
 function fromBase64(str: string): Uint8Array<ArrayBuffer> {
