@@ -201,9 +201,9 @@ export async function POST(req: NextRequest) {
       } catch (e) { console.error('Amadeus hotel error:', e); }
     }
 
-    // ── Car Rental ────────────────────────────────────────────────────────────
-    const needsCar   = services.includes('car');
-    let hotels: any[] = [];
+// ── Car Rental ────────────────────────────────────────────────────────────
+const needsCar = services.includes('car');
+let cars: any[] = []; //
     if (needsCar && hasRapidAPI) {
       try {
         const carCity     = (intent as any).hotelDestination || intent.destination;
