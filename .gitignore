@@ -3,3 +3,4 @@ node_modules
 .env*.local
 .next/
 *.swp
+.env.local.save
