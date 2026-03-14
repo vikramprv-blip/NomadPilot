@@ -10,12 +10,11 @@ const CITY_TO_IATA: Record<string, string> = {
   // Denmark
   billund:'BLL', bll:'BLL', copenhagen:'CPH', cph:'CPH', aarhus:'AAL', aal:'AAL',
   // France
-  paris:'CDG', cdg:'CDG', ory:'ORY', nice:'NCE', nce:'NCE', lyon:'LYS', lys:'LYS', marseille:'MRS',
-  par:'CDG',
+  paris:'CDG', cdg:'CDG', ory:'ORY', nice:'NCE', nce:'NCE', lyon:'LYS', lys:'LYS', marseille:'MRS', par:'CDG',
   // Spain
   malaga:'AGP', agp:'AGP', barcelona:'BCN', bcn:'BCN', madrid:'MAD', mad:'MAD',
   seville:'SVQ', svq:'SVQ', valencia:'VLC', vlc:'VLC', ibiza:'IBZ', ibz:'IBZ',
-  // Spanish coastal (use nearest airport)
+  // Spanish coastal
   estepona:'AGP', marbella:'AGP', torremolinos:'AGP', fuengirola:'AGP',
   benalmadena:'AGP', nerja:'AGP', ronda:'AGP', costa:'AGP',
   'costa del sol':'AGP', alicante:'ALC', alc:'ALC', murcia:'MJV',
@@ -39,9 +38,7 @@ const CITY_TO_IATA: Record<string, string> = {
   kolkata:'CCU', ccu:'CCU', hyderabad:'HYD', hyd:'HYD', goa:'GOI', goi:'GOI',
   pune:'PNQ', pnq:'PNQ', ahmedabad:'AMD', amd:'AMD', jaipur:'JAI',
   islamabad:'ISB', isb:'ISB', lahore:'LHE', lhe:'LHE', karachi:'KHI', khi:'KHI',
-  colombo:'CMB', cmb:'CMB',
-  kathmandu:'KTM', ktm:'KTM',
-  dhaka:'DAC', dac:'DAC',
+  colombo:'CMB', cmb:'CMB', kathmandu:'KTM', ktm:'KTM', dhaka:'DAC', dac:'DAC',
   yangon:'RGN', rgn:'RGN', myanmar:'RGN', rangoon:'RGN',
   // USA
   'new york':'JFK', jfk:'JFK', nyc:'JFK', 'los angeles':'LAX', lax:'LAX',
@@ -55,47 +52,29 @@ const CITY_TO_IATA: Record<string, string> = {
   seoul:'ICN', icn:'ICN', taipei:'TPE', tpe:'TPE', beijing:'PEK', pek:'PEK',
   shanghai:'PVG', pvg:'PVG',
   // Australia
-  sydney:'SYD', syd:'SYD', melbourne:'MEL', mel:'MEL', brisbane:'BNE', bne:'BNE',
-  perth:'PER', per:'PER',
-  // Extra Europe
-  vienna:'VIE', vie:'VIE',
-  zurich:'ZRH', zrh:'ZRH', geneva:'GVA', gva:'GVA',
-  lisbon:'LIS', lis:'LIS', porto:'OPO', opo:'OPO',
-  brussels:'BRU', bru:'BRU',
-  prague:'PRG', prg:'PRG', warsaw:'WAW', waw:'WAW', krakow:'KRK', krk:'KRK',
-  athens:'ATH', ath:'ATH',
-  budapest:'BUD', bud:'BUD', bucharest:'OTP', otp:'OTP',
-  sofia:'SOF', sof:'SOF', belgrade:'BEG', beg:'BEG',
+  sydney:'SYD', syd:'SYD', melbourne:'MEL', mel:'MEL', brisbane:'BNE', bne:'BNE', perth:'PER', per:'PER',
+  // Europe & Other
+  vienna:'VIE', vie:'VIE', lisbon:'LIS', lis:'LIS', porto:'OPO', opo:'OPO',
+  brussels:'BRU', bru:'BRU', prague:'PRG', prg:'PRG', warsaw:'WAW', waw:'WAW',
+  krakow:'KRK', krk:'KRK', athens:'ATH', ath:'ATH', budapest:'BUD', bud:'BUD',
+  bucharest:'OTP', otp:'OTP', sofia:'SOF', sof:'SOF', belgrade:'BEG', beg:'BEG',
   riga:'RIX', rix:'RIX', tallinn:'TLL', tll:'TLL', vilnius:'VNO', vno:'VNO',
-  kyiv:'KBP', kbp:'KBP', tbilisi:'TBS', tbs:'TBS',
-  yerevan:'EVN', evn:'EVN', baku:'GYD', gyd:'GYD',
-  tehran:'IKA', ika:'IKA',
+  kyiv:'KBP', kbp:'KBP', tbilisi:'TBS', tbs:'TBS', yerevan:'EVN', evn:'EVN',
+  baku:'GYD', gyd:'GYD', tehran:'IKA', ika:'IKA', istanbul:'IST', ist:'IST',
+  oslo:'OSL', osl:'OSL', stockholm:'ARN', arn:'ARN', helsinki:'HEL', hel:'HEL',
   // Canada
   toronto:'YYZ', yyz:'YYZ', vancouver:'YVR', yvr:'YVR', montreal:'YUL', yul:'YUL',
   calgary:'YYC', yyc:'YYC', ottawa:'YOW', yow:'YOW',
   // Middle East
-  doha:'DOH', doh:'DOH', riyadh:'RUH', ruh:'RUH', kuwait:'KWI', kwi:'KWI',
-  muscat:'MCT', mct:'MCT', amman:'AMM', amm:'AMM',
+  doha:'DOH', doh:'DOH', riyadh:'RUH', ruh:'RUH', kuwait:'KWI', kwi:'KWI', muscat:'MCT', mct:'MCT', amman:'AMM', amm:'AMM',
   // Africa
-  nairobi:'NBO', nbo:'NBO',
-  'cape town':'CPT', capetown:'CPT', cpt:'CPT',
-  johannesburg:'JNB', jnb:'JNB',
-  lagos:'LOS', los:'LOS', accra:'ACC', acc:'ACC',
-  casablanca:'CMN', cmn:'CMN', marrakech:'RAK', rak:'RAK',
-  cairo:'CAI', cai:'CAI',
-  addis:'ADD', 'addis ababa':'ADD', add:'ADD',
-  tunis:'TUN', tun:'TUN', algiers:'ALG',
-  dakar:'DKR', dkr:'DKR', kigali:'KGL', kgl:'KGL',
-  cairo:'CAI', cai:'CAI', casablanca:'CMN', cmn:'CMN', lagos:'LOS', los:'LOS',
-  // Others
-  istanbul:'IST', ist:'IST', oslo:'OSL', osl:'OSL', stockholm:'ARN', arn:'ARN',
-  helsinki:'HEL', hel:'HEL', brussels:'BRU', bru:'BRU', vienna:'VIE', vie:'VIE',
-  lisbon:'LIS', lis:'LIS', athens:'ATH', ath:'ATH', warsaw:'WAW', waw:'WAW',
-  prague:'PRG', prg:'PRG', budapest:'BUD', bud:'BUD',
-  'mexico city':'MEX', mex:'MEX', 'sao paulo':'GRU', gru:'GRU',
-  'buenos aires':'EZE', eze:'EZE', santiago:'SCL', scl:'SCL', lima:'LIM', lim:'LIM',
+  nairobi:'NBO', nbo:'NBO', 'cape town':'CPT', capetown:'CPT', cpt:'CPT',
+  johannesburg:'JNB', jnb:'JNB', lagos:'LOS', los:'LOS', accra:'ACC', acc:'ACC',
+  casablanca:'CMN', cmn:'CMN', marrakech:'RAK', rak:'RAK', cairo:'CAI', cai:'CAI',
+  addis:'ADD', 'addis ababa':'ADD', add:'ADD', tunis:'TUN', tun:'TUN', algiers:'ALG', dakar:'DKR', dkr:'DKR', kigali:'KGL', kgl:'KGL',
+  // South America
+  'mexico city':'MEX', mex:'MEX', 'sao paulo':'GRU', gru:'GRU', 'buenos aires':'EZE', eze:'EZE', santiago:'SCL', scl:'SCL', lima:'LIM', lim:'LIM',
 };
-
 function resolveIATA(raw: string): string {
   const key = raw.toLowerCase().trim().replace(/\s+/g, ' ');
   return CITY_TO_IATA[key] || raw.toUpperCase();
