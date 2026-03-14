@@ -8,7 +8,7 @@ export default function BetaGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<string | null>(null);
   useEffect(() => {
   setState('approved'); return; // temporary bypass
-  ...
+  
 
   useEffect(() => {
     // If beta gate not enabled, pass everyone through
