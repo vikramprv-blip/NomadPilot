@@ -136,3 +136,26 @@ export async function searchBookingFlights(params: {
     return [];
   }
 }
+
+// ── Reverse IATA → city name for hotel search ─────────────────────────────
+export const IATA_TO_CITY: Record<string, string> = {
+  AGP: 'Malaga', BCN: 'Barcelona', MAD: 'Madrid', LHR: 'London',
+  CDG: 'Paris', AMS: 'Amsterdam', FRA: 'Frankfurt', MUC: 'Munich',
+  DXB: 'Dubai', AUH: 'Abu Dhabi', DOH: 'Doha', SIN: 'Singapore',
+  BKK: 'Bangkok', HKG: 'Hong Kong', NRT: 'Tokyo', ICN: 'Seoul',
+  SYD: 'Sydney', JFK: 'New York', LAX: 'Los Angeles', ORD: 'Chicago',
+  MIA: 'Miami', SFO: 'San Francisco', DEL: 'New Delhi', BOM: 'Mumbai',
+  BLR: 'Bangalore', CCU: 'Kolkata', MAA: 'Chennai', HYD: 'Hyderabad',
+  IST: 'Istanbul', ATH: 'Athens', FCO: 'Rome', MXP: 'Milan',
+  VIE: 'Vienna', ZRH: 'Zurich', LIS: 'Lisbon', BRU: 'Brussels',
+  CPH: 'Copenhagen', ARN: 'Stockholm', OSL: 'Oslo', HEL: 'Helsinki',
+  WAW: 'Warsaw', PRG: 'Prague', BUD: 'Budapest', YYZ: 'Toronto',
+  YVR: 'Vancouver', GRU: 'Sao Paulo', EZE: 'Buenos Aires', SCL: 'Santiago',
+  NBO: 'Nairobi', JNB: 'Johannesburg', CAI: 'Cairo', CMN: 'Casablanca',
+  KUL: 'Kuala Lumpur', CGK: 'Jakarta', MNL: 'Manila', DPS: 'Bali',
+  BLL: 'Billund', GOI: 'Goa', CMB: 'Colombo', KTM: 'Kathmandu',
+};
+
+export function iataToCity(iata: string): string {
+  return IATA_TO_CITY[iata.toUpperCase()] || iata;
+}
