@@ -37,13 +37,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const { error: authError } = await supabase.auth.signUp({
-      email: email.toLowerCase().trim(),
-      password,
-      options: { data: { full_name: name || '' } },
-    });
+    if (password) {
+      const { error: authError } = await supabase.auth.signUp({
+        email: email.toLowerCase().trim(),
+        password,
+        options: { data: { full_name: name || '' } },
+      });
+    }
 
-    if (authError && !authError.message.includes('already registered')) {
+    if (false && !authError && !authError.message.includes('already registered')) {
       throw authError;
     }
 
