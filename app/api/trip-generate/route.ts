@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchFlights, searchHotels } from '@/lib/amadeus';
 import { searchKiwiFlights, KiwiFlight } from '@/lib/rapidapi/kiwi';
-import { searchBookingHotels, searchBookingFlights, BookingFlight } from '@/lib/rapidapi/booking';
+import { searchBookingHotels, searchBookingFlights, BookingFlight, iataToCity } from '@/lib/rapidapi/booking';
 import { createClient } from '@/lib/supabase/server';
 import { TripIntent, Itinerary, FlightOption, HotelOption } from '@/types';
 import { nanoid } from 'nanoid';
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
     let flights: FlightOption[] = legFlightResults.flat();
 
     // ── Hotels: Safe Calculation ──────────────────────────────────────────────
-    const hotelCity = (intent as any).hotelDestination || intent.destination;
+    const hotelCity = iataToCity((intent as any).hotelDestination || intent.destination);
     const hotelNights = (intent as any).nights || 3;
 
     // checkIn = last leg's date for multi-city, otherwise departure date
