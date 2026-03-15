@@ -126,7 +126,7 @@ async function searchOneLeg(
         destination:   to,
         departureDate: date,
         returnDate:    '',        // ✅ always one-way per leg
-        preferences:   { ...intent.preferences, cabinClass: cabin },
+        preferences: { ...intent.preferences, cabinClass: cabin as 'economy' | 'premium_economy' | 'business' | 'first' },
       });
     } catch (e) {
       console.error(`Amadeus leg error (${from}→${to}):`, e);
