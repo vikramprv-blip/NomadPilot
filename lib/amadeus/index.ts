@@ -72,10 +72,6 @@ export async function resolveIATA(token: string, query: string): Promise<string>
     'bahrain': 'BAH', 'muscat': 'MCT', 'amman': 'AMM',
     'beirut': 'BEY', 'tel aviv': 'TLV', 'casablanca': 'CMN',
     'lagos': 'LOS', 'accra': 'ACC', 'addis ababa': 'ADD',
-    'chicago': 'ORD', 'atlanta': 'ATL', 'dallas': 'DFW',
-    'san francisco': 'SFO', 'seattle': 'SEA', 'boston': 'BOS',
-    'barcelona': 'BCN', 'manchester': 'MAN', 'birmingham': 'BHX',
-    'glasgow': 'GLA', 'edinburgh': 'EDI', 'dublin': 'DUB',
   };
 
   const lower = query.toLowerCase().trim();
