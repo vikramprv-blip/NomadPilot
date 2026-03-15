@@ -103,9 +103,16 @@ export async function POST(req: NextRequest) {
     const baseDepartureDate = toISODate(intent.departureDate);
 
     // ── Flights: per-leg search ──────────────────────────────────────────────
-    const intentLegs: any[] = (intent as any).legs?.length > 0
+    const returnDate = intent.returnDate ? toISODate(intent.returnDate) : null;
+    const isReturn = !!returnDate && (intent as any).tripType !== 'multicity';
+    const intentLegs: any[] = (intent as any).legs?.length > 1
       ? (intent as any).legs
-      : [{ from: intent.origin, to: intent.destination, date: baseDepartureDate, cabinClass: intent.preferences?.cabinClass }];
+      : isReturn
+        ? [
+            { from: intent.origin, to: intent.destination, date: baseDepartureDate, cabinClass: intent.preferences?.cabinClass },
+            { from: intent.destination, to: intent.origin, date: returnDate, cabinClass: intent.preferences?.cabinClass },
+          ]
+        : [{ from: intent.origin, to: intent.destination, date: baseDepartureDate, cabinClass: intent.preferences?.cabinClass }];
 
     const isMultiCity = intentLegs.length > 1;
 
