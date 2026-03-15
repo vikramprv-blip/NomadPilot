@@ -2,19 +2,20 @@
  * Beta signup + traction API
  * POST /api/beta        — sign up for beta
  * GET  /api/beta        — traction stats (admin only)
- * POST /api/beta/event  — track an event
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-// ── POST — beta signup ────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, name, country, travel_type, how_heard, use_case, source } = body;
+    const { email, name, password, country, travel_type, how_heard, use_case, source } = body;
 
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
+    }
+    if (!password || password.length < 8) {
+      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
     }
 
     const supabase = createClient();
@@ -36,7 +37,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Insert new tester
+    // Create Supabase auth account so they can sign in later
+    const { error: authError } = await supabase.auth.signUp({
+      email: email.toLowerCase().trim(),
+      password,
+      options: { data: { full_name: name || '' } },
+    });
+
+    if (authError && !authError.message.includes('already registered')) {
+      throw authError;
+    }
+
+    // Insert into beta_testers waitlist
     const { data, error } = await supabase
       .from('beta_testers')
       .insert({
@@ -70,13 +82,12 @@ export async function POST(req: NextRequest) {
 
   } catch (err: any) {
     if (err.code === '23505') {
-      return NextResponse.json({ success: true, already: true, message: "Already signed up!" });
+      return NextResponse.json({ success: true, already: true, message: 'Already signed up!' });
     }
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// ── GET — traction stats (admin) ──────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const adminKey = req.headers.get('x-admin-key');
   if (adminKey !== process.env.ADMIN_SECRET) {
@@ -91,48 +102,13 @@ export async function GET(req: NextRequest) {
     { count: invited },
     { count: active },
     { data: recent },
-    { data: byCountry },
-    { data: bySource },
-    { data: dailySignups },
-    { data: recentEvents },
   ] = await Promise.all([
     supabase.from('beta_testers').select('*', { count: 'exact', head: true }),
     supabase.from('beta_testers').select('*', { count: 'exact', head: true }).eq('status', 'waitlist'),
     supabase.from('beta_testers').select('*', { count: 'exact', head: true }).eq('status', 'invited'),
     supabase.from('beta_testers').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase.from('beta_testers').select('email,name,country,status,search_count,created_at').order('created_at', { ascending: false }).limit(20),
-    supabase.from('beta_testers').select('country').not('country', 'is', null),
-    supabase.from('beta_testers').select('how_heard').not('how_heard', 'is', null),
-    supabase.from('beta_testers').select('created_at').order('created_at', { ascending: true }),
-    supabase.from('beta_events').select('event,email,metadata,created_at').order('created_at', { ascending: false }).limit(50),
+    supabase.from('beta_testers').select('email,name,country,status,created_at').order('created_at', { ascending: false }).limit(20),
   ]);
 
-  // Aggregate country breakdown
-  const countryMap: Record<string, number> = {};
-  (byCountry || []).forEach((r: any) => {
-    countryMap[r.country] = (countryMap[r.country] || 0) + 1;
-  });
-
-  // Aggregate source breakdown
-  const sourceMap: Record<string, number> = {};
-  (bySource || []).forEach((r: any) => {
-    const src = r.how_heard || 'unknown';
-    sourceMap[src] = (sourceMap[src] || 0) + 1;
-  });
-
-  // Daily signups for chart
-  const dayMap: Record<string, number> = {};
-  (dailySignups || []).forEach((r: any) => {
-    const day = r.created_at?.slice(0, 10);
-    if (day) dayMap[day] = (dayMap[day] || 0) + 1;
-  });
-
-  return NextResponse.json({
-    summary: { total, waitlist, invited, active },
-    recentSignups:  recent,
-    byCountry:      Object.entries(countryMap).sort((a,b) => b[1]-a[1]).slice(0, 10),
-    bySource:       Object.entries(sourceMap).sort((a,b) => b[1]-a[1]),
-    dailySignups:   Object.entries(dayMap).map(([date, count]) => ({ date, count })),
-    recentActivity: recentEvents,
-  });
+  return NextResponse.json({ summary: { total, waitlist, invited, active }, recentSignups: recent });
 }
