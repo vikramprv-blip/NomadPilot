@@ -62,7 +62,7 @@ export function useAppState() {
         origin:           leg.from        || '',
         destination:      lastLeg.to      || leg.to || '',
         departureDate:    leg.date        || leg.departure || '',
-        returnDate:       leg.return      || formData.returnDate || '',
+        returnDate: formData.returnDate || leg.return || leg.returnDate || '',
         travelers:        formData.travelers || 1,
         cabinClass:       formData.cabinClass || 'economy',
         nationality:      formData.nationality || '',
