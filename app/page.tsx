@@ -1,184 +1,180 @@
 'use client';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { useAppState } from '@/hooks/useAppState';
+import { useAuth } from '@/hooks/useAuth';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
+import BetaGate from '@/components/beta/BetaGate';
+import VaultTab from '@/components/vault/VaultTab';
+import TabNav from '@/components/tabs/TabNav';
+import StageProgress from '@/components/layout/StageProgress';
+import InputStage from '@/components/trip/InputStage';
+import ProcessingStage from '@/components/trip/ProcessingStage';
+import ConfirmationStage from '@/components/trip/ConfirmationStage';
+import BookingStage from '@/components/trip/BookingStage';
+import VisaCalendar from '@/components/trip/VisaCalendar';
+import { OpsStage, OrganizerStage, PostTripStage } from '@/components/trip/LateStages';
+import MyTripsTab from '@/components/mytrips/MyTripsTab';
+import DestinationTab from '@/components/destination/DestinationTab';
+import AccountTab from '@/components/account/AccountTab';
+import AuthModal from '@/components/auth/AuthModal';
+import ChatBot from '@/components/chat/ChatBot';
 
-export default function BetaPage() {
-  const [form, setForm] = useState({
-    email: '', name: '', password: '', country: '', travel_type: '', how_heard: '', use_case: '',
-  });
-  const [status, setStatus] = useState<'idle'|'loading'|'success'|'error'>('idle');
-  const [result, setResult] = useState<any>(null);
+type Tab = 'search' | 'mytrips' | 'destination' | 'account' | 'vault';
 
-  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
+export default function HomePage() {
+  const { state, loading, error, processInput, processStructuredSearch, confirmItinerary, bookTrip, setStage, reset } = useAppState();
+  const { user, loading: authLoading, signOut } = useAuth();
+  const { permission, supported, requestPermission, notify } = usePushNotifications(user?.id);
 
-  const submit = async () => {
-    if (!form.email || !form.password) return;
-    if (form.password.length < 8) { setStatus('error'); setResult({ message: 'Password must be at least 8 characters' }); return; }
-    setStatus('loading');
-    try {
-      const res = await fetch('/api/beta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, source: 'beta-page' }),
-      });
-      const data = await res.json();
-      setResult(data);
-      setStatus(data.success ? 'success' : 'error');
-    } catch {
-      setStatus('error');
+  const [tab, setTab]                   = useState<Tab>('search');
+  const [nationality, setNationality]   = useState('');
+  const [showVisa, setShowVisa]         = useState(false);
+  const [showAuth, setShowAuth]         = useState(false);
+  const [tripCount, setTripCount]       = useState(0);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [notifBanner, setNotifBanner]   = useState(true);
+
+  const handleSaveBooking = useCallback(async (type: string, partner: string, url: string, details: object) => {
+    const stored  = localStorage.getItem('nomadpilot_trips');
+    const trips   = stored ? JSON.parse(stored) : [];
+    const newTrip = {
+      id: Math.random().toString(36).slice(2),
+      type, partner_name: partner, partner_url: url,
+      details, status: 'booked',
+      created_at: new Date().toISOString(),
+      user_id: user?.id,
+    };
+    const updated = [newTrip, ...trips];
+    localStorage.setItem('nomadpilot_trips', JSON.stringify(updated));
+    setTripCount(updated.length);
+    const icon = type === 'flight' ? '✈ Flight' : type === 'hotel' ? '🏨 Hotel' : type === 'car' ? '🚗 Car' : '🚂 Train';
+    notify(`${icon} saved to My Trips`, `Booked via ${partner}`);
+
+    if (user?.id) {
+      try {
+        await fetch('/api/save-booking', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, type, partnerName: partner, partnerUrl: url, details }),
+        });
+      } catch {}
     }
-  };
+  }, [user, notify]);
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '12px 16px', borderRadius: 8,
-    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
-    color: '#fff', fontSize: 14, fontFamily: 'DM Sans, sans-serif',
-    outline: 'none', boxSizing: 'border-box',
-  };
-  const labelStyle: React.CSSProperties = {
-    fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)',
-    textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, display: 'block',
-  };
+  const handleSearchSubmit = useCallback((data: object) => {
+    const d = data as any;
+    if (d.nationality) setNationality(d.nationality);
+    processStructuredSearch(d);
+  }, [processStructuredSearch]);
 
-  const canSubmit = form.email && form.password && form.password.length >= 8;
+  const handleAISubmit = useCallback((text: string) => {
+    processInput(text);
+  }, [processInput]);
+
+  const inSearch     = tab === 'search';
+  const showProgress = inSearch && state.stage !== 'input';
+  const chatContext  = user ? { name: user.user_metadata?.full_name || user.email, email: user.email, plan: user.user_metadata?.plan || 'free', tripCount } : undefined;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a1628', color: '#fff', fontFamily: 'DM Sans, sans-serif' }}>
-      <div style={{ textAlign: 'center', padding: '80px 24px 48px' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#e8a020', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 16 }}>
-          🚀 Private Beta
-        </div>
-        <h1 style={{ fontSize: 52, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', marginBottom: 16, lineHeight: 1.15 }}>
-          Travel smarter.<br /><span style={{ color: '#e8a020' }}>AI-powered.</span>
-        </h1>
-        <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.6)', maxWidth: 520, margin: '0 auto 12px', lineHeight: 1.6 }}>
-          NomadPilot searches flights and hotels across Kiwi, Booking.com, Agoda and more — in one place, in your currency.
-        </p>
-        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)', marginBottom: 48 }}>Limited spots. Join the waitlist and get early access.</p>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 48, marginBottom: 64, flexWrap: 'wrap' }}>
-          {[['10+', 'Partners'], ['100+', 'Countries'], ['25+', 'Currencies'], ['AI', 'Powered']].map(([n, l]) => (
-            <div key={l} style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 32, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', color: '#e8a020' }}>{n}</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{l}</div>
-            </div>
-          ))}
-        </div>
-      </div>
+    <BetaGate>
+    <div style={{ minHeight: '100vh', background: 'var(--navy)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 80% 45% at 50% -5%, rgba(232,160,32,0.07), transparent)' }} />
 
-      <div style={{ maxWidth: 520, margin: '0 auto', padding: '0 24px 80px' }}>
-        {status === 'success' ? (
-          <div style={{ textAlign: 'center', padding: '48px 32px', background: 'rgba(45,212,160,0.08)', borderRadius: 16, border: '1px solid rgba(45,212,160,0.2)' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
-            <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
-              {result?.already ? "You're already on the list!" : "You're in!"}
-            </h2>
-            <p style={{ color: 'rgba(255,255,255,0.6)', marginBottom: 16 }}>{result?.message}</p>
-            {result?.invite_code && (
-              <div style={{ background: 'rgba(232,160,32,0.1)', borderRadius: 10, padding: '14px 20px', border: '1px solid rgba(232,160,32,0.2)', marginBottom: 16 }}>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>Your invite code</div>
-                <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.1em', color: '#e8a020', fontFamily: 'monospace' }}>{result.invite_code}</div>
-              </div>
-            )}
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 8 }}>
-              We'll email you when approved. Sign in with your email and the password you just set.
-            </p>
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} onSuccess={() => setShowAuth(false)} />}
+
+      {supported && permission === 'default' && notifBanner && (
+        <div style={{ background: 'rgba(232,160,32,0.1)', borderBottom: '1px solid rgba(232,160,32,0.2)', padding: '8px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, zIndex: 50 }}>
+          <span style={{ color: 'var(--text-dim)' }}>🔔 Enable push notifications for flight delays & safety alerts</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={requestPermission} className="btn btn-gold" style={{ fontSize: 12, padding: '5px 14px' }}>Enable</button>
+            <button onClick={() => setNotifBanner(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16 }}>✕</button>
           </div>
-        ) : (
-          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)', padding: '32px 28px' }}>
-            <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24, textAlign: 'center' }}>Request Beta Access</h2>
-            <div style={{ display: 'grid', gap: 16 }}>
+        </div>
+      )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={labelStyle}>Email *</label>
-                  <input style={inputStyle} type="email" placeholder="you@example.com" value={form.email} onChange={e => set('email', e.target.value)} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Name</label>
-                  <input style={inputStyle} type="text" placeholder="Your name" value={form.name} onChange={e => set('name', e.target.value)} />
-                </div>
-              </div>
+      <header style={{ borderBottom: '1px solid var(--navy-border)', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(10,22,40,0.92)', backdropFilter: 'blur(16px)', position: 'sticky', top: 0, zIndex: 100, height: 58, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flexShrink: 0 }} onClick={() => { reset(); setTab('search'); }}>
+          <img src="/NP_Logo.jpg" alt="NomadPilot" style={{ width: 32, height: 32, borderRadius: 7, objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <span style={{ fontFamily: 'Cormorant Garamond, serif', fontWeight: 700, fontSize: 19, color: 'var(--gold)' }}>NomadPilot</span>
+        </div>
 
-              <div>
-                <label style={labelStyle}>Password *</label>
-                <input style={inputStyle} type="password" placeholder="Min 8 characters — you'll use this to sign in" value={form.password} onChange={e => set('password', e.target.value)} />
-                {form.password && form.password.length < 8 && (
-                  <p style={{ fontSize: 12, color: '#ff6b6b', marginTop: 4 }}>Password must be at least 8 characters</p>
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '0 16px' }}>
+          {showProgress && <StageProgress current={state.stage} />}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          {inSearch && state.stage === 'input' && (
+            <button onClick={() => setShowVisa(v => !v)} className="btn btn-navy" style={{ fontSize: 12, padding: '6px 12px' }}>🛂 Visa</button>
+          )}
+          {inSearch && state.stage !== 'input' && (
+            <button className="btn btn-navy" onClick={reset} style={{ fontSize: 12, padding: '6px 12px' }}>← New Search</button>
+          )}
+          {!authLoading && (
+            user ? (
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setShowUserMenu(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--navy-light)', border: '1px solid var(--navy-border)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', color: 'var(--text)', fontFamily: 'DM Sans', fontSize: 13, fontWeight: 500 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg, var(--gold-dark), var(--gold))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--navy)', fontWeight: 800 }}>
+                    {(user.user_metadata?.full_name || user.email || 'U')[0].toUpperCase()}
+                  </div>
+                  <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {user.user_metadata?.full_name || user.email?.split('@')[0]}
+                  </span>
+                </button>
+                {showUserMenu && (
+                  <div style={{ position: 'absolute', right: 0, top: '110%', background: 'var(--navy-mid)', border: '1px solid var(--navy-border)', borderRadius: 10, padding: 8, minWidth: 180, zIndex: 200, boxShadow: 'var(--shadow)' }}>
+                    <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--navy-border)', marginBottom: 6 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>Signed in as</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{user.email}</div>
+                    </div>
+                    <a href="/admin" style={{ textDecoration: 'none', display: 'block' }}>
+                      <button style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', color: 'var(--gold)', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans', borderRadius: 6 }}>⚙ Admin Dashboard</button>
+                    </a>
+                    <button onClick={() => { signOut(); setShowUserMenu(false); }} style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 12px', color: 'var(--red)', cursor: 'pointer', fontSize: 13, fontFamily: 'DM Sans', borderRadius: 6 }}>↩ Sign Out</button>
+                  </div>
                 )}
               </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={labelStyle}>Country</label>
-                  <input style={inputStyle} type="text" placeholder="e.g. India" value={form.country} onChange={e => set('country', e.target.value)} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Travel type</label>
-                  <select style={inputStyle} value={form.travel_type} onChange={e => set('travel_type', e.target.value)}>
-                    <option value="">Select...</option>
-                    <option value="business">Business</option>
-                    <option value="leisure">Leisure</option>
-                    <option value="both">Both</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label style={labelStyle}>How did you hear about us?</label>
-                <select style={inputStyle} value={form.how_heard} onChange={e => set('how_heard', e.target.value)}>
-                  <option value="">Select...</option>
-                  <option value="twitter">Twitter / X</option>
-                  <option value="linkedin">LinkedIn</option>
-                  <option value="friend">Friend / Colleague</option>
-                  <option value="google">Google Search</option>
-                  <option value="producthunt">Product Hunt</option>
-                  <option value="reddit">Reddit</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>What will you use NomadPilot for?</label>
-                <textarea style={{ ...inputStyle, height: 80, resize: 'none' }}
-                  placeholder="e.g. planning monthly business trips to India..."
-                  value={form.use_case} onChange={e => set('use_case', e.target.value)} />
-              </div>
-
-              <button onClick={submit} disabled={status === 'loading' || !canSubmit}
-                style={{ width: '100%', padding: '14px', borderRadius: 10, background: canSubmit ? '#e8a020' : 'rgba(232,160,32,0.3)', border: 'none', color: canSubmit ? '#0a1628' : 'rgba(10,22,40,0.5)', fontSize: 15, fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.2s' }}>
-                {status === 'loading' ? '⏳ Joining...' : '🚀 Join Beta Waitlist'}
-              </button>
-
-              {status === 'error' && (
-                <p style={{ color: '#ff6b6b', fontSize: 13, textAlign: 'center' }}>{result?.message || 'Something went wrong. Please try again.'}</p>
-              )}
-
-              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 4 }}>
-                No spam. We'll only email you with your invite. Use this password to sign in once approved.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '64px 24px', maxWidth: 760, margin: '0 auto' }}>
-        <h3 style={{ textAlign: 'center', fontSize: 28, fontWeight: 700, fontFamily: 'Cormorant Garamond, serif', marginBottom: 40 }}>What beta testers get</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
-          {[
-            { icon: '✈', title: 'Real flight data', desc: 'Live prices from Kiwi, Aviasales, Booking.com' },
-            { icon: '🏨', title: 'Hotel search', desc: 'Booking.com, Agoda, Hotels.com in one search' },
-            { icon: '🤖', title: 'AI trip planner', desc: 'Just type your trip in plain English' },
-            { icon: '💱', title: 'Your currency', desc: '25+ currencies — prices shown your way' },
-            { icon: '🛂', title: 'Visa checker', desc: 'Instant visa requirements for your passport' },
-            { icon: '📍', title: 'Destination hub', desc: 'Weather, restaurants, safety, attractions' },
-          ].map(f => (
-            <div key={f.title} style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.07)' }}>
-              <div style={{ fontSize: 28, marginBottom: 10 }}>{f.icon}</div>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>{f.title}</div>
-              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5 }}>{f.desc}</div>
-            </div>
-          ))}
+            ) : (
+              <button onClick={() => setShowAuth(true)} className="btn btn-gold" style={{ fontSize: 12, padding: '6px 16px' }}>Sign In</button>
+            )
+          )}
         </div>
-      </div>
+      </header>
+
+      <TabNav active={tab} onChange={t => { setTab(t); if (t !== 'search') reset(); }} tripCount={tripCount} />
+
+      {error && tab === 'search' && (
+        <div style={{ background: 'rgba(232,85,85,0.1)', padding: '10px 24px', color: 'var(--red)', fontSize: 13 }}>⚠ {error}</div>
+      )}
+
+      {showUserMenu && <div style={{ position: 'fixed', inset: 0, zIndex: 150 }} onClick={() => setShowUserMenu(false)} />}
+
+      <main style={{ position: 'relative', zIndex: 1, flex: 1, padding: '40px 24px', maxWidth: 1100, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+        {tab === 'search' && (
+          <>
+            {state.stage === 'input' && (
+              <>
+                <InputStage onSubmit={handleSearchSubmit} onAISubmit={handleAISubmit} loading={loading} />
+                {showVisa && <div style={{ maxWidth: 880, margin: '28px auto 0' }}><VisaCalendar nationality={nationality} /></div>}
+              </>
+            )}
+            {(state.stage === 'processing' || state.stage === 'generation' || state.stage === 'optimization') && <ProcessingStage currentStage={state.stage} />}
+            {state.stage === 'confirmation' && state.itineraries && state.intent && (
+              <ConfirmationStage itineraries={state.itineraries} intent={state.intent} onSaveBooking={handleSaveBooking} cars={(state as any).cars || []} />
+            )}
+            {state.stage === 'booking'   && state.selectedItinerary && <BookingStage itinerary={state.selectedItinerary} onBook={bookTrip} loading={loading} />}
+            {state.stage === 'ops'       && state.booking && state.selectedItinerary && <OpsStage booking={state.booking} itinerary={state.selectedItinerary} tripId={state.tripId} onContinue={() => setStage('organizer')} />}
+            {state.stage === 'organizer' && state.selectedItinerary && state.booking  && <OrganizerStage itinerary={state.selectedItinerary} booking={state.booking} onContinue={() => setStage('post_trip')} />}
+            {state.stage === 'post_trip' && state.selectedItinerary && <PostTripStage itinerary={state.selectedItinerary} onReset={reset} />}
+          </>
+        )}
+        {tab === 'mytrips'     && <MyTripsTab userId={user?.id} />}
+        {tab === 'destination' && <DestinationTab currentDestination={state.intent?.destination || ''} />}
+        {tab === 'account'     && <AccountTab currentPlan={user?.user_metadata?.plan || 'free'} />}
+        {tab === 'vault'       && <VaultTab user={user} />}
+      </main>
+
+      <ChatBot user={user} userContext={chatContext} />
     </div>
+    </BetaGate>
   );
 }
