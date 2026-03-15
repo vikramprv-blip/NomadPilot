@@ -79,7 +79,7 @@ export default function HomePage() {
   const chatContext  = user ? { name: user.user_metadata?.full_name || user.email, email: user.email, plan: user.user_metadata?.plan || 'free', tripCount } : undefined;
 
   return (
-    <BetaGate>
+    <BetaGate onShowAuth={() => setShowAuth(true)}>
     <div style={{ minHeight: '100vh', background: 'var(--navy)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 80% 45% at 50% -5%, rgba(232,160,32,0.07), transparent)' }} />
 
