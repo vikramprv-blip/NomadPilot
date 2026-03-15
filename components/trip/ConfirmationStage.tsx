@@ -463,12 +463,32 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking, 
   const isMultiCity = (intent as any).tripType === 'multicity' || (intent as any).legs?.length > 1;
   const intentLegs  = (intent as any).legs || [];
 
+  // Detect trip type
+  const isReturn = (intent as any).tripType === 'return' || 
+                   (!isMultiCity && !!intent.returnDate);
+
   // Collect all unique flights across itineraries
   const allFlights = Array.from(
     new Map(
       itineraries.flatMap(it => it.flights).map(f => [f.id, f])
     ).values()
   );
+
+  // ── Split outbound vs inbound for return trips ───────────────────────────
+  // Amadeus returns both legs in the same flights array.
+  // Outbound: origin matches intent.origin
+  // Inbound:  origin matches intent.destination (the return leg)
+  const outboundFlights = isReturn
+    ? allFlights.filter(f =>
+        f.origin?.toUpperCase() === intent.origin?.toUpperCase()
+      )
+    : allFlights;
+
+  const inboundFlights = isReturn
+    ? allFlights.filter(f =>
+        f.origin?.toUpperCase() === intent.destination?.toUpperCase()
+      )
+    : [];
 
   // Group flights by leg for multi-city display
   const flightsByLeg: Record<number, typeof allFlights> = {};
@@ -480,6 +500,7 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking, 
     });
   }
 
+
   // Collect hotels
   const allHotels = Array.from(
     new Map(
@@ -487,16 +508,23 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking, 
     ).values()
   );
 
-  // Sort
-  const sorted = [...allFlights].sort((a, b) => {
+  const sortFn = (a: FlightOption, b: FlightOption) => {
     if (sort === 'price')    return a.price - b.price;
     if (sort === 'duration') return parseDuration(a.duration) - parseDuration(b.duration);
     if (sort === 'stops')    return a.stops - b.stops;
     return 0;
-  });
+  };
 
-  const minPrice = allFlights.length ? Math.min(...allFlights.map(f => f.price)) : 0;
-  const maxPrice = allFlights.length ? Math.max(...allFlights.map(f => f.price)) : 0;
+  // Sort both pools independently
+  const sorted         = [...outboundFlights].sort(sortFn);
+  const sortedInbound  = [...inboundFlights].sort(sortFn);
+
+  // Stats based on outbound (primary pool)
+  const statFlights = sorted.length > 0 ? sorted : allFlights;
+  const minPrice = statFlights.length ? Math.min(...statFlights.map(f => f.price)) : 0;
+  const maxPrice = statFlights.length ? Math.max(...statFlights.map(f => f.price)) : 0;
+
+
 
   const handleBook = (partner: string, url: string, flight: FlightOption) => {
     const key = `${flight.id}-${partner}`;
@@ -611,20 +639,117 @@ export default function ConfirmationStage({ itineraries, intent, onSaveBooking, 
         </div>
       )}
 
-      {/* Single route flight list */}
+       {/* Single route / return flight list */}
       {wantFlight && !isMultiCity && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {sorted.map((flight, i) => (
-            <FlightRow
-              key={flight.id}
-              flight={flight}
-              intent={intent}
-              rank={i}
-              onBook={(partner, url) => handleBook(partner, url, flight)}
-            />
-          ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+          {/* ── Outbound leg ── */}
+          <div>
+            {isReturn && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                marginBottom: 10, padding: '8px 14px', borderRadius: 8,
+                background: 'rgba(232,160,32,0.08)',
+                border: '1px solid rgba(232,160,32,0.2)',
+              }}>
+                <span style={{ fontSize: 16 }}>✈</span>
+                <div>
+                  <span style={{ fontWeight: 700, color: 'var(--gold)', fontSize: 14 }}>
+                    Outbound: {intent.origin?.toUpperCase()} → {intent.destination?.toUpperCase()}
+                  </span>
+                  {intent.departureDate && (
+                    <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 10 }}>
+                      {new Date(intent.departureDate).toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'short', day: 'numeric',
+                      })}
+                    </span>
+                  )}
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 'auto' }}>
+                  {sorted.length} option{sorted.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {sorted.length > 0 ? (
+                sorted.map((flight, i) => (
+                  <FlightRow
+                    key={flight.id}
+                    flight={flight}
+                    intent={intent}
+                    rank={i}
+                    onBook={(partner, url) => handleBook(partner, url, flight)}
+                  />
+                ))
+              ) : (
+                <div style={{
+                  padding: '20px', borderRadius: 10,
+                  background: 'var(--navy-mid)',
+                  border: '1px solid var(--navy-border)',
+                  textAlign: 'center',
+                  color: 'var(--text-dim)', fontSize: 13,
+                }}>
+                  No outbound flights found for this route.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Return/inbound leg (only for return trips) ── */}
+          {isReturn && (
+            <div>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                marginBottom: 10, padding: '8px 14px', borderRadius: 8,
+                background: 'rgba(45,212,160,0.06)',
+                border: '1px solid rgba(45,212,160,0.2)',
+              }}>
+                <span style={{ fontSize: 16 }}>✈</span>
+                <div>
+                  <span style={{ fontWeight: 700, color: 'var(--green)', fontSize: 14 }}>
+                    Return: {intent.destination?.toUpperCase()} → {intent.origin?.toUpperCase()}
+                  </span>
+                  {intent.returnDate && (
+                    <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 10 }}>
+                      {new Date(intent.returnDate).toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'short', day: 'numeric',
+                      })}
+                    </span>
+                  )}
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 'auto' }}>
+                  {sortedInbound.length} option{sortedInbound.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {sortedInbound.length > 0 ? (
+                  sortedInbound.map((flight, i) => (
+                    <FlightRow
+                      key={flight.id}
+                      flight={flight}
+                      intent={{ ...intent, departureDate: intent.returnDate || intent.departureDate }}
+                      rank={i}
+                      onBook={(partner, url) => handleBook(partner, url, flight)}
+                    />
+                  ))
+                ) : (
+                  <div style={{
+                    padding: '20px', borderRadius: 10,
+                    background: 'var(--navy-mid)',
+                    border: '1px solid var(--navy-border)',
+                    textAlign: 'center',
+                    color: 'var(--text-dim)', fontSize: 13,
+                  }}>
+                    No return flights found. Try adjusting your return date.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
       )}
+
 
       {/* Hotels section */}
       {wantHotel && (
