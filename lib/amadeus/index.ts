@@ -157,7 +157,7 @@ export async function searchFlights(intent: TripIntent): Promise<FlightOption[]>
     SK: 'SAS', AY: 'Finnair', SN: 'Brussels Airlines',
     TP: 'TAP Air Portugal', U2: 'easyJet', FR: 'Ryanair',
     VY: 'Vueling', W6: 'Wizz Air', G3: 'Gol',
-    AI: 'Air India', 6E: 'IndiGo', SG: 'SpiceJet',
+    AI: 'Air India', '6E': 'IndiGo', SG: 'SpiceJet',
     UK: 'Vistara', IX: 'Air India Express',
     QF: 'Qantas', NZ: 'Air New Zealand', NH: 'ANA',
     JL: 'Japan Airlines', MH: 'Malaysia Airlines',
