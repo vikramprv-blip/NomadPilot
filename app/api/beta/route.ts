@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/server';
 import { checkRateLimit, limiters } from '@/lib/ratelimit';
 
 export async function POST(req: NextRequest) {
-  // Rate limit — 5 signups per IP per hour
   const limited = await checkRateLimit(req, limiters.beta);
   if (limited) return limited;
 
@@ -14,7 +13,7 @@ export async function POST(req: NextRequest) {
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
     }
-    // Password optional for backwards compatibility — if provided must be 8+ chars
+
     if (password && password.length < 8) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
     }
@@ -43,10 +42,11 @@ export async function POST(req: NextRequest) {
         password,
         options: { data: { full_name: name || '' } },
       });
-    }
-
-    if (false && !authError && !authError.message.includes('already registered')) {
-      throw authError;
+      if (authError &&
+          !authError.message.includes('already registered') &&
+          !authError.message.includes('User already registered')) {
+        console.error('Auth signup error:', authError.message);
+      }
     }
 
     const { data, error } = await supabase
