@@ -170,7 +170,7 @@ export async function searchFlights(intent: TripIntent): Promise<FlightOption[]>
     return {
       id:             offer.id,
       airline:        AIRLINE_NAMES[carrier] || carrier,
-      airlineCode:    carrier,
+      // airlineCode: carrier,
       flightNumber:   `${carrier}${seg.number}`,
       origin:         seg.departure.iataCode,
       destination:    lastSeg.arrival.iataCode,
@@ -184,7 +184,7 @@ export async function searchFlights(intent: TripIntent): Promise<FlightOption[]>
       bookingClass:   offer.travelerPricings[0]?.fareDetailsBySegment[0]?.class || 'Y',
       loyaltyMiles:   Math.round(parseFloat(offer.price.total) * 5),
       co2kg:          Math.round(parseFloat(offer.price.total) * 0.8),
-      deepLink:       buildDeepLink(carrier, seg, lastSeg, intent),
+      // deepLink: buildDeepLink(carrier, seg, lastSeg, intent),
     };
   });
 
