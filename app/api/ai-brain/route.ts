@@ -275,7 +275,7 @@ Rules:
 - Multi-city: split into legs array, set tripType:"multicity"
 
 Return JSON:
-{"origin":"LHR","destination":"JFK","departureDate":"2026-03-20","returnDate":"2026-03-25","travelers":1,"tripType":"return","services":["flight","hotel"],"nationality":"Danish","hotelDestination":null,"nights":null,"hotelStars":null,"currency":"DKK","preferences":{"cabinClass":"first"},"legs":[{"from":"LHR","to":"JFK","date":"2026-03-20","cabinClass":"first"}]}
+{"origin":"BLL","destination":"AGP","departureDate":"2026-03-22","returnDate":null,"travelers":2,"tripType":"multicity","services":["flight","hotel"],"nationality":"Danish","hotelDestination":"Estepona","nights":5,"hotelStars":null,"currency":"GBP","preferences":{"cabinClass":"economy"},"legs":[{"from":"BLL","to":"CDG","date":"2026-03-22","cabinClass":"economy"},{"from":"CDG","to":"AGP","date":"2026-03-24","cabinClass":"economy"}]}
 
 Request: "${userMessage}"`;
 
