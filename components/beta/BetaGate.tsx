@@ -16,7 +16,7 @@ export default function BetaGate({ children }: { children: React.ReactNode }) {
 
       if (!session) {
         setState('not_logged_in');
-        setShowAuthModal(true); // Auto-open sign in modal
+        setShowAuthModal(true);
         return;
       }
 
@@ -56,17 +56,14 @@ export default function BetaGate({ children }: { children: React.ReactNode }) {
     setShowAuthModal(true);
   };
 
-  // Checking
   if (state === 'checking') return (
     <div style={{ minHeight: '100vh', background: 'var(--navy, #0a1628)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <span style={{ fontSize: 32, color: '#e8a020' }}>◌</span>
     </div>
   );
 
-  // Approved → render the full app
   if (state === 'approved') return <>{children}</>;
 
-  // Not logged in → show auth modal over the welcome screen
   if (state === 'not_logged_in') return (
     <div style={{ minHeight: '100vh', background: 'var(--navy, #0a1628)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'DM Sans, sans-serif' }}>
       {showAuthModal && (
@@ -94,12 +91,16 @@ export default function BetaGate({ children }: { children: React.ReactNode }) {
               Join the Waitlist →
             </a>
           </div>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', marginTop: 20 }}>
+            By continuing you agree to our{' '}
+            <a href="/privacy" style={{ color: 'rgba(255,255,255,0.45)', textDecoration: 'underline' }}>Privacy Policy</a>.
+            We never sell your data.
+          </p>
         </div>
       </div>
     </div>
   );
 
-  // Pending / waitlist
   return (
     <div style={{ minHeight: '100vh', background: 'var(--navy, #0a1628)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: 'DM Sans, sans-serif' }}>
       <div style={{ maxWidth: 480, width: '100%', textAlign: 'center' }}>
@@ -113,11 +114,7 @@ export default function BetaGate({ children }: { children: React.ReactNode }) {
           <div style={{ display: 'inline-block', padding: '6px 16px', borderRadius: 100, background: 'rgba(232,160,32,0.2)', border: '1px solid rgba(232,160,32,0.4)', fontSize: 12, fontWeight: 700, color: '#e8a020', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 24 }}>
             {status ?? 'waitlist'}
           </div>
-          {email && (
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginBottom: 28 }}>
-              Signed in as <strong style={{ color: 'rgba(255,255,255,0.6)' }}>{email}</strong>
-            </p>
-          )}
+          {email && <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginBottom: 28 }}>Signed in as <strong style={{ color: 'rgba(255,255,255,0.6)' }}>{email}</strong></p>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 20 }}>
             {[
               { label: '𝕏 Twitter', url: 'https://twitter.com/intent/tweet?text=Just+joined+the+%40NomadPilot+beta+%E2%80%94+AI-powered+travel+planning.+Join+the+waitlist%3A+https%3A%2F%2Fnomad-pilot.vercel.app%2Fbeta' },
