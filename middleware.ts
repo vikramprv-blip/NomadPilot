@@ -36,8 +36,8 @@ export async function middleware(request: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {
-    return NextResponse.redirect(new URL('/beta', request.url));
-  }
+  return NextResponse.next();
+}
 
   const { data: tester } = await supabase
     .from('beta_testers')
