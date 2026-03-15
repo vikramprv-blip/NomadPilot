@@ -1,12 +1,11 @@
-/**
- * GET /api/beta/check?email=xxx
- * Returns the beta approval status for a given email.
- * Used by BetaGate.tsx on the client side.
- */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { checkRateLimit, limiters } from '@/lib/ratelimit';
 
 export async function GET(req: NextRequest) {
+  const limited = await checkRateLimit(req, limiters.general);
+  if (limited) return limited;
+
   const email = req.nextUrl.searchParams.get('email');
   if (!email) return NextResponse.json({ approved: false, status: null });
 
