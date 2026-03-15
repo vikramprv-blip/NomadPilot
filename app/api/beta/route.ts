@@ -14,7 +14,8 @@ export async function POST(req: NextRequest) {
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
     }
-    if (!password || password.length < 8) {
+    // Password optional for backwards compatibility — if provided must be 8+ chars
+    if (password && password.length < 8) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
     }
 
