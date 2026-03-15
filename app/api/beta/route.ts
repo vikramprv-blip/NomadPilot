@@ -3,8 +3,9 @@ import { createClient } from '@/lib/supabase/server';
 import { checkRateLimit, limiters } from '@/lib/ratelimit';
 
 export async function POST(req: NextRequest) {
-  const limited = await checkRateLimit(req, limiters.beta);
-  if (limited) return limited;
+  // Rate limiting disabled until Upstash env vars are confirmed
+  // const limited = await checkRateLimit(req, limiters.beta);
+  // if (limited) return limited;
 
   try {
     const body = await req.json();
