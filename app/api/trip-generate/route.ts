@@ -211,7 +211,7 @@ export async function POST(req: NextRequest) {
 
     if (isMultiCity) {
       const perLeg = legFlightResults.map(res => res.slice(0, 3));
-      const maxCombos = Math.min(5, Math.max(...perLeg.map(r => r.length)));
+      const maxCombos = Math.min(5, Math.max(1, ...perLeg.map(r => r.length)));
       for (let i = 0; i < maxCombos; i++) {
         const comboFlights = perLeg.map((legRes, legIdx) => legRes[Math.min(i, legRes.length - 1)] || legFlightResults[legIdx]?.[0] || null).filter(Boolean);
         if (comboFlights.length === 0) continue;
