@@ -1,41 +1,11 @@
 /**
  * GET /api/cron/check-alerts
  * Runs every 15 minutes via Vercel Cron.
- * Checks all active price alerts, fires push + email if price dropped.
+ * Uses existing RapidAPI/Kiwi setup — no new API key needed.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
-const KIWI_API = 'https://api.tequila.kiwi.com/v2/search';
-
-// ── Fetch cheapest price for a route from Kiwi ─────────────────────────────
-async function fetchPrice(origin: string, destination: string, date: string, currency: string): Promise<number | null> {
-  try {
-    const params = new URLSearchParams({
-      fly_from:     origin,
-      fly_to:       destination,
-      date_from:    date,
-      date_to:      date,
-      adults:       '1',
-      currency:     currency,
-      limit:        '1',
-      sort:         'price',
-      asc:          '1',
-      one_for_city: '1',
-    });
-
-    const res = await fetch(`${KIWI_API}?${params}`, {
-      headers: { apikey: process.env.KIWI_API_KEY || '' },
-    });
-
-    if (!res.ok) return null;
-    const data = await res.json();
-    const price = data.data?.[0]?.price;
-    return price ? parseFloat(price) : null;
-  } catch {
-    return null;
-  }
-}
+import { searchKiwiFlights } from '@/lib/rapidapi/kiwi';
 
 // ── Send push notification ──────────────────────────────────────────────────
 async function sendPush(userId: string, title: string, body: string, url: string) {
@@ -50,7 +20,7 @@ async function sendPush(userId: string, title: string, body: string, url: string
   }
 }
 
-// ── Send approval email via Resend ─────────────────────────────────────────
+// ── Send price drop email via Resend ────────────────────────────────────────
 async function sendAlertEmail(
   email: string,
   origin: string,
@@ -83,17 +53,16 @@ async function sendAlertEmail(
               <div style="font-size:48px;margin-bottom:16px;">📉</div>
               <h1 style="font-size:24px;font-weight:700;margin:0 0 8px;">Price dropped ${drop}%!</h1>
               <p style="color:rgba(255,255,255,0.6);font-size:18px;margin:0 0 24px;">
-                <strong style="color:#fff;">${origin} → ${destination}</strong><br/>
-                ${date}
+                <strong style="color:#fff;">${origin} → ${destination}</strong><br/>${date}
               </p>
               <div style="background:rgba(45,212,160,0.1);border:1px solid rgba(45,212,160,0.3);border-radius:12px;padding:20px;margin-bottom:24px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <div>
+                <div style="display:flex;justify-content:center;gap:32px;align-items:center;">
+                  <div style="text-align:center;">
                     <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:4px;">WAS</div>
                     <div style="font-size:20px;color:rgba(255,255,255,0.4);text-decoration:line-through;">${currency} ${oldPrice}</div>
                   </div>
-                  <div style="font-size:28px;">→</div>
-                  <div>
+                  <div style="font-size:24px;">→</div>
+                  <div style="text-align:center;">
                     <div style="font-size:12px;color:#2dd4a0;margin-bottom:4px;">NOW</div>
                     <div style="font-size:28px;font-weight:700;color:#2dd4a0;">${currency} ${newPrice}</div>
                   </div>
@@ -119,7 +88,7 @@ async function sendAlertEmail(
 
 // ── Main cron handler ───────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  // Verify this is called by Vercel Cron (not a random visitor)
+  // Verify called by Vercel Cron
   const authHeader = req.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -127,13 +96,13 @@ export async function GET(req: NextRequest) {
 
   const supabase = createClient();
 
-  // Fetch all active, non-triggered alerts
+  // Fetch all active alerts for future dates
   const { data: alerts, error } = await supabase
     .from('price_alerts')
     .select('*')
     .eq('active', true)
     .eq('triggered', false)
-    .gte('date', new Date().toISOString().slice(0, 10)); // only future dates
+    .gte('date', new Date().toISOString().slice(0, 10));
 
   if (error) {
     console.error('Failed to fetch alerts:', error);
@@ -148,30 +117,33 @@ export async function GET(req: NextRequest) {
 
   for (const alert of alerts) {
     try {
-      const currentPrice = await fetchPrice(
-        alert.origin,
-        alert.destination,
-        alert.date,
-        alert.currency || 'USD'
-      );
+      // Use existing RapidAPI/Kiwi — no new key needed!
+      const flights = await searchKiwiFlights({
+        origin:      alert.origin,
+        destination: alert.destination,
+        date:        alert.date,
+        adults:      1,
+        currency:    alert.currency || 'USD',
+      });
 
-      if (!currentPrice) continue;
+      if (!flights || flights.length === 0) continue;
 
+      // Get cheapest price
+      const currentPrice = Math.min(...flights.map(f => f.price));
+      const bestFlight   = flights.find(f => f.price === currentPrice);
       const lastPrice    = alert.last_price;
       const targetPrice  = alert.target_price;
 
-      // Determine if we should fire the alert
-      const hitTarget    = targetPrice && currentPrice <= targetPrice;
-      const priceDrop10  = lastPrice && currentPrice < lastPrice * 0.9; // 10% drop
-      const firstCheck   = !lastPrice && targetPrice && currentPrice <= targetPrice;
-
-      const shouldFire = hitTarget || priceDrop10 || firstCheck;
+      // Fire if: hit target price OR dropped 10%+ from last known price
+      const hitTarget   = targetPrice && currentPrice <= targetPrice;
+      const priceDrop   = lastPrice && currentPrice < lastPrice * 0.9;
+      const shouldFire  = hitTarget || priceDrop;
 
       // Always update last_price
       await supabase
         .from('price_alerts')
         .update({
-          last_price:  currentPrice,
+          last_price:   currentPrice,
           last_checked: new Date().toISOString(),
           ...(shouldFire ? { triggered: true, triggered_at: new Date().toISOString() } : {}),
         })
@@ -179,18 +151,19 @@ export async function GET(req: NextRequest) {
 
       if (shouldFire) {
         triggered++;
-        const oldPrice = lastPrice || targetPrice || currentPrice * 1.15;
-        const deepLink = `https://nomad-pilot.vercel.app/?from=${alert.origin}&to=${alert.destination}&date=${alert.date}`;
+        const oldPrice = lastPrice || (targetPrice ? targetPrice * 1.15 : currentPrice * 1.15);
+        const deepLink = bestFlight?.deepLink ||
+          `https://nomad-pilot.vercel.app/?from=${alert.origin}&to=${alert.destination}&date=${alert.date}`;
 
-        // Fire push notification
+        // Push notification
         await sendPush(
           alert.user_id,
           `✈️ Price drop! ${alert.origin} → ${alert.destination}`,
-          `Now ${alert.currency} ${currentPrice} — down from ${alert.currency} ${Math.round(oldPrice)}`,
+          `Now ${alert.currency} ${currentPrice} — was ${alert.currency} ${Math.round(oldPrice)}`,
           deepLink
         );
 
-        // Fire email
+        // Email
         if (alert.email) {
           await sendAlertEmail(
             alert.email,
